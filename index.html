@@ -5,6 +5,30 @@
   <style>
     body { margin: 0; overflow: hidden; background: black; }
 
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: Arial;
+      z-index: 10;
+    }
+
+    .bar {
+      width: 200px;
+      height: 20px;
+      background: #333;
+      margin-bottom: 10px;
+    }
+
+    .fill {
+      height: 100%;
+      background: lime;
+      width: 100%;
+    }
+
+    #enemyBar .fill { background: red; }
+
     #message {
       position: absolute;
       top: 40%;
@@ -13,65 +37,85 @@
       font-size: 40px;
       color: white;
       font-family: Arial;
+      z-index: 10;
     }
   </style>
 </head>
 <body>
 
+<div id="ui">
+  Player
+  <div class="bar"><div id="playerHP" class="fill"></div></div>
+  Boss
+  <div id="enemyBar" class="bar"><div id="enemyHP" class="fill"></div></div>
+</div>
+
 <div id="message">Loading...</div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
-
-<!-- ✅ FIXED LOADER (IMPORTANT) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/loaders/GLTFLoader.js"></script>
 
 <script>
 let scene, camera, renderer;
-let player = null, enemy = null;
+let player, enemy, sword;
+
+let keys = {};
+let attack = false;
+let attackProgress = 0;
+
+let playerHealth = 5;
+let enemyHealth = 10;
+let gameOver = false;
+
+let swordBox = new THREE.Box3();
+let enemyBox = new THREE.Box3();
 
 let loader = new THREE.GLTFLoader();
 
-function init(){
-  scene = new THREE.Scene();
+// ✅ FIXED LOADING SYSTEM
+let loaded = 0;
+let totalToLoad = 2;
 
-  camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
-  camera.position.set(0,5,10);
+function playSound(freq){
+  let ctx = new (window.AudioContext || window.webkitAudioContext)();
+  let o = ctx.createOscillator();
+  let g = ctx.createGain();
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(innerWidth, innerHeight);
-  document.body.appendChild(renderer.domElement);
+  o.connect(g);
+  g.connect(ctx.destination);
 
-  // LIGHT
-  let light = new THREE.DirectionalLight(0xffffff, 1);
-  light.position.set(5,10,7);
-  scene.add(light);
+  o.frequency.value = freq;
+  o.start();
 
-  // GROUND (always visible)
-  let ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(50,50),
-    new THREE.MeshStandardMaterial({ color: 0x228B22 })
-  );
-  ground.rotation.x = -Math.PI/2;
-  scene.add(ground);
+  g.gain.setValueAtTime(0.2, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
 
-  // LOAD PLAYER
-  loadHuman(0x00ff00, (model)=>{
-    player = model;
-    player.position.set(0,0,0);
-    scene.add(player);
-  });
-
-  // LOAD ENEMY
-  loadHuman(0xff0000, (model)=>{
-    enemy = model;
-    enemy.position.set(5,0,0);
-    scene.add(enemy);
-  });
-
-  animate();
+  o.stop(ctx.currentTime + 0.2);
 }
 
-// 🧍 load model safely
+// 🌳 tree
+function createTree(x,z){
+  let t = new THREE.Group();
+
+  let trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2,0.2,2),
+    new THREE.MeshStandardMaterial({color:0x8B4513})
+  );
+  trunk.position.y = 1;
+  t.add(trunk);
+
+  let leaves = new THREE.Mesh(
+    new THREE.SphereGeometry(1),
+    new THREE.MeshStandardMaterial({color:0x2ecc71})
+  );
+  leaves.position.y = 2.5;
+  t.add(leaves);
+
+  t.position.set(x,0,z);
+  scene.add(t);
+}
+
+// 🧍 human loader (SAFE)
 function loadHuman(color, cb){
   loader.load(
     "https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb",
@@ -80,50 +124,187 @@ function loadHuman(color, cb){
       let model = gltf.scene;
       model.scale.set(0.5,0.5,0.5);
 
-      model.traverse((o)=>{
+      model.traverse(o=>{
         if(o.isMesh){
           o.material = o.material.clone();
           o.material.color.set(color);
         }
       });
 
+      loaded++;
       cb(model);
     },
 
     undefined,
 
     function(err){
-      console.error("Model failed to load:", err);
+      console.log("Model failed → fallback cube");
 
-      // fallback cube so game NEVER breaks
       let fallback = new THREE.Mesh(
         new THREE.BoxGeometry(1,2,1),
-        new THREE.MeshStandardMaterial({ color })
+        new THREE.MeshStandardMaterial({color})
       );
 
+      loaded++;
       cb(fallback);
     }
   );
 }
 
+function init(){
+  scene = new THREE.Scene();
+
+  camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+
+  renderer = new THREE.WebGLRenderer();
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  let light = new THREE.DirectionalLight(0xffffff,1);
+  light.position.set(5,10,7);
+  scene.add(light);
+
+  // 🌱 ground
+  let ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(50,50),
+    new THREE.MeshStandardMaterial({color:0x228B22})
+  );
+  ground.rotation.x = -Math.PI/2;
+  scene.add(ground);
+
+  // 🌳 trees
+  for(let i=0;i<25;i++){
+    let x = (Math.random()-0.5)*40;
+    let z = (Math.random()-0.5)*40;
+    if(Math.abs(x)<5 && Math.abs(z)<5) continue;
+    createTree(x,z);
+  }
+
+  // 🧍 player
+  loadHuman(0x00ff00, p=>{
+    player = p;
+    scene.add(player);
+  });
+
+  // 🧍 enemy
+  loadHuman(0xff0000, e=>{
+    enemy = e;
+    enemy.position.set(5,0,0);
+    scene.add(enemy);
+  });
+
+  // ⚔️ sword
+  let blade = new THREE.Mesh(
+    new THREE.BoxGeometry(0.1,1.5,0.2),
+    new THREE.MeshStandardMaterial({color:0xcccccc})
+  );
+  blade.position.y = 1;
+
+  sword = new THREE.Group();
+  sword.add(blade);
+
+  document.addEventListener("keydown", e=>{
+    keys[e.key.toLowerCase()] = true;
+
+    if(e.code === "Space" && !attack && !gameOver){
+      attack = true;
+      attackProgress = 0;
+      playSound(300);
+    }
+
+    if(e.key.toLowerCase()==="r" && gameOver){
+      location.reload();
+    }
+  });
+
+  document.addEventListener("keyup", e=>{
+    keys[e.key.toLowerCase()] = false;
+  });
+}
+
+function updateUI(){
+  document.getElementById("playerHP").style.width = (playerHealth/5*100)+"%";
+  document.getElementById("enemyHP").style.width = (enemyHealth/10*100)+"%";
+}
+
+function show(msg){
+  document.getElementById("message").innerText = msg + " (Press R)";
+  gameOver = true;
+}
+
 function animate(){
   requestAnimationFrame(animate);
 
-  // ✅ WAIT until models exist
-  if(!player || !enemy){
+  // ✅ FIX: no infinite freeze
+  if(loaded < totalToLoad){
     renderer.render(scene, camera);
     return;
   }
 
-  // simple camera follow
-  let mid = new THREE.Vector3().addVectors(player.position, enemy.position).multiplyScalar(0.5);
-  camera.lookAt(mid);
-  camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+10),0.05);
+  document.getElementById("message").style.display = "none";
 
-  renderer.render(scene, camera);
+  let speed = 0.1;
+
+  if(!gameOver){
+    if(keys["w"]) player.position.z -= speed;
+    if(keys["s"]) player.position.z += speed;
+    if(keys["a"]) player.position.x -= speed;
+    if(keys["d"]) player.position.x += speed;
+  }
+
+  // camera follow
+  let mid = new THREE.Vector3().addVectors(player.position, enemy.position).multiplyScalar(0.5);
+  camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+10),0.08);
+  camera.lookAt(mid);
+
+  // enemy chase
+  let dir = new THREE.Vector3().subVectors(player.position, enemy.position);
+  let dist = dir.length();
+  dir.normalize();
+
+  if(enemyHealth > 0 && !gameOver){
+    if(dist > 2){
+      enemy.position.add(dir.clone().multiplyScalar(0.03));
+    }
+  }
+
+  // attack
+  if(attack){
+    attackProgress += 0.1;
+
+    sword.rotation.z = -Math.PI/2 + attackProgress*Math.PI;
+    player.add(sword);
+
+    swordBox.setFromObject(sword);
+    enemyBox.setFromObject(enemy);
+
+    if(enemyHealth > 0 && swordBox.intersectsBox(enemyBox)){
+      enemyHealth--;
+      playSound(600);
+      enemy.position.add(dir.clone().multiplyScalar(0.5));
+    }
+
+    if(attackProgress >= 1){
+      attack = false;
+      sword.rotation.z = 0;
+    }
+  }
+
+  updateUI();
+
+  if(enemyHealth <= 0 && !gameOver){
+    show("YOU WIN");
+  }
+
+  if(playerHealth <= 0 && !gameOver){
+    show("GAME OVER");
+  }
+
+  renderer.render(scene,camera);
 }
 
 init();
+animate();
 </script>
 
 </body>
