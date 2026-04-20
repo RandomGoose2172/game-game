@@ -1,14 +1,15 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>3D Arena Fighter PRO</title>
+  <title>Fixed Arena Fighter</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
 
     #ui {
       position:absolute;
       top:10px; left:10px;
-      color:white; font-family:Arial;
+      color:white;
+      font-family:Arial;
     }
 
     .bar {
@@ -16,9 +17,8 @@
       background:#333; margin-bottom:5px;
     }
 
-    .fill { height:100%; background:lime; width:100%; }
+    .fill { height:100%; background:lime; }
     #enemyBar .fill { background:red; }
-    #stamBar .fill { background:cyan; }
 
     #msg {
       position:absolute;
@@ -35,8 +35,6 @@
 <div id="ui">
   HP
   <div class="bar"><div id="hp" class="fill"></div></div>
-  STAMINA
-  <div id="stamBar" class="bar"><div id="stam" class="fill"></div></div>
   BOSS
   <div id="enemyBar" class="bar"><div id="ehp" class="fill"></div></div>
 </div>
@@ -49,231 +47,211 @@
 let scene, camera, renderer;
 let player, enemy, sword;
 
-let keys={};
-let attack=false, combo=0, attackT=0;
-let dodge=false, dodgeT=0;
+let keys = {};
+let attack = false;
+let attackTime = 0;
 
-let hp=5, ehp=10, stamina=5;
-let dead=false;
+let hp = 5;
+let ehp = 10;
+let dead = false;
 
-let walkT=0;
+let bossCooldown = 0;
 
-let swordBox=new THREE.Box3();
-let enemyBox=new THREE.Box3();
+// 🧍 better human (WITH LEGS)
+function createHuman(color){
+  let g = new THREE.Group();
+  let m = new THREE.MeshStandardMaterial({color});
 
-function human(color){
-  let g=new THREE.Group();
-  let m=new THREE.MeshStandardMaterial({color});
+  let body = new THREE.Mesh(new THREE.CylinderGeometry(0.3,0.3,1.5), m);
+  body.position.y = 1.5;
+  g.add(body);
 
-  let head=new THREE.Mesh(new THREE.SphereGeometry(0.3),m);
-  head.position.y=2; g.add(head);
+  let head = new THREE.Mesh(new THREE.SphereGeometry(0.4), m);
+  head.position.y = 2.6;
+  g.add(head);
 
-  let body=new THREE.Mesh(new THREE.CylinderGeometry(0.2,0.2,1.5),m);
-  body.position.y=1; g.add(body);
+  let leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,1), m);
+  leg1.position.set(-0.2,0.5,0);
+  g.add(leg1);
 
-  let armL=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,1),m);
-  armL.position.set(-0.6,1.3,0); g.add(armL);
+  let leg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.15,1), m);
+  leg2.position.set(0.2,0.5,0);
+  g.add(leg2);
 
-  let armR=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,1),m);
-  armR.position.set(0.6,1.3,0); g.add(armR);
+  let arm1 = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,1), m);
+  arm1.position.set(-0.6,1.8,0);
+  g.add(arm1);
 
-  let legL=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,1),m);
-  legL.position.set(-0.3,0.3,0); g.add(legL);
+  let arm2 = new THREE.Mesh(new THREE.CylinderGeometry(0.1,0.1,1), m);
+  arm2.position.set(0.6,1.8,0);
+  g.add(arm2);
 
-  let legR=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.08,1),m);
-  legR.position.set(0.3,0.3,0); g.add(legR);
-
-  g.userData={armL,armR,legL,legR,mat:m};
   return g;
 }
 
-function tree(x,z){
-  let t=new THREE.Group();
+// 🌳 trees
+function createTree(x,z){
+  let t = new THREE.Group();
 
-  let trunk=new THREE.Mesh(
+  let trunk = new THREE.Mesh(
     new THREE.CylinderGeometry(0.2,0.2,2),
     new THREE.MeshStandardMaterial({color:0x8B4513})
   );
-  trunk.position.y=1; t.add(trunk);
+  trunk.position.y = 1;
+  t.add(trunk);
 
-  let leaves=new THREE.Mesh(
+  let leaves = new THREE.Mesh(
     new THREE.SphereGeometry(1),
     new THREE.MeshStandardMaterial({color:0x2ecc71})
   );
-  leaves.position.y=2.5; t.add(leaves);
+  leaves.position.y = 2.5;
+  t.add(leaves);
 
   t.position.set(x,0,z);
   scene.add(t);
 }
 
 function init(){
-  scene=new THREE.Scene();
+  scene = new THREE.Scene();
 
-  camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
+  camera = new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
 
-  renderer=new THREE.WebGLRenderer();
+  renderer = new THREE.WebGLRenderer();
   renderer.setSize(innerWidth,innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  let light=new THREE.DirectionalLight(0xffffff,1);
+  let light = new THREE.DirectionalLight(0xffffff,1);
   light.position.set(5,10,7);
   scene.add(light);
 
-  let ground=new THREE.Mesh(
+  // 🌱 ground
+  let ground = new THREE.Mesh(
     new THREE.PlaneGeometry(50,50),
     new THREE.MeshStandardMaterial({color:0x228B22})
   );
-  ground.rotation.x=-Math.PI/2;
+  ground.rotation.x = -Math.PI/2;
   scene.add(ground);
 
-  for(let i=0;i<30;i++){
-    let x=(Math.random()-0.5)*40;
-    let z=(Math.random()-0.5)*40;
+  // 🌳 spawn trees
+  for(let i=0;i<20;i++){
+    let x = (Math.random()-0.5)*40;
+    let z = (Math.random()-0.5)*40;
     if(Math.abs(x)<5 && Math.abs(z)<5) continue;
-    tree(x,z);
+    createTree(x,z);
   }
 
-  player=human(0x00ff00);
-  enemy=human(0xff0000);
+  player = createHuman(0x00ff00);
+  enemy = createHuman(0xff0000);
+
   enemy.position.set(5,0,0);
 
   scene.add(player);
   scene.add(enemy);
 
-  let blade=new THREE.Mesh(
+  // ⚔️ sword
+  let blade = new THREE.Mesh(
     new THREE.BoxGeometry(0.1,1.5,0.2),
     new THREE.MeshStandardMaterial({color:0xcccccc})
   );
-  blade.position.y=1;
+  blade.position.y = 1;
 
-  sword=new THREE.Group();
+  sword = new THREE.Group();
   sword.add(blade);
 
-  document.addEventListener("keydown",e=>{
-    keys[e.key.toLowerCase()]=true;
+  document.addEventListener("keydown", e=>{
+    keys[e.key.toLowerCase()] = true;
 
-    if(e.code==="Space" && stamina>0){
-      attack=true;
-      combo++;
-      attackT=0;
-      stamina--;
-    }
-
-    if(e.key==="q" && stamina>1){
-      dodge=true;
-      dodgeT=0;
-      stamina-=2;
+    if(e.code==="Space" && !attack && !dead){
+      attack = true;
+      attackTime = 0;
     }
 
     if(e.key==="r" && dead) location.reload();
   });
 
-  document.addEventListener("keyup",e=>{
-    keys[e.key.toLowerCase()]=false;
+  document.addEventListener("keyup", e=>{
+    keys[e.key.toLowerCase()] = false;
   });
 
   animate();
 }
 
 function ui(){
-  document.getElementById("hp").style.width=(hp/5*100)+"%";
-  document.getElementById("ehp").style.width=(ehp/10*100)+"%";
-  document.getElementById("stam").style.width=(stamina/5*100)+"%";
+  document.getElementById("hp").style.width = (hp/5*100)+"%";
+  document.getElementById("ehp").style.width = (ehp/10*100)+"%";
 }
 
 function show(t){
-  let m=document.getElementById("msg");
-  m.innerText=t+" (R)";
-  m.style.display="block";
-  dead=true;
+  let m = document.getElementById("msg");
+  m.innerText = t + " (R)";
+  m.style.display = "block";
+  dead = true;
 }
 
 function animate(){
   requestAnimationFrame(animate);
 
-  let speed=0.1;
-  let moving=false;
+  let speed = 0.1;
 
   if(!dead){
-    if(keys["w"]){player.position.z-=speed; moving=true;}
-    if(keys["s"]){player.position.z+=speed; moving=true;}
-    if(keys["a"]){player.position.x-=speed; moving=true;}
-    if(keys["d"]){player.position.x+=speed; moving=true;}
-  }
-
-  if(moving){
-    walkT+=0.2;
-    let s=Math.sin(walkT)*0.5;
-
-    player.userData.armL.rotation.z=s;
-    player.userData.armR.rotation.z=-s;
-    player.userData.legL.rotation.z=-s;
-    player.userData.legR.rotation.z=s;
-  }
-
-  // stamina regen
-  stamina=Math.min(5, stamina+0.02);
-
-  // dodge
-  if(dodge){
-    dodgeT+=0.2;
-    player.position.z-=0.3;
-    if(dodgeT>1) dodge=false;
+    if(keys["w"]) player.position.z -= speed;
+    if(keys["s"]) player.position.z += speed;
+    if(keys["a"]) player.position.x -= speed;
+    if(keys["d"]) player.position.x += speed;
   }
 
   // camera
-  let mid=new THREE.Vector3().addVectors(player.position,enemy.position).multiplyScalar(0.5);
+  let mid = new THREE.Vector3().addVectors(player.position, enemy.position).multiplyScalar(0.5);
   camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+10),0.1);
   camera.lookAt(mid);
 
-  // boss AI + phase 2
-  let dir=new THREE.Vector3().subVectors(player.position,enemy.position);
-  let dist=dir.length();
-  dir.normalize();
+  // distance (FIXED HIT SYSTEM)
+  let dist = player.position.distanceTo(enemy.position);
 
-  let bossSpeed = ehp < 5 ? 0.07 : 0.04;
+  // boss movement
+  let dir = new THREE.Vector3().subVectors(player.position, enemy.position).normalize();
 
-  if(!dead){
-    if(dist>2){
-      enemy.position.add(dir.multiplyScalar(bossSpeed));
-    } else if(!dodge){
-      hp--;
-      player.position.add(dir.multiplyScalar(1.2));
-    }
+  let bossSpeed = ehp < 5 ? 0.08 : 0.04; // PHASE 2
+
+  if(!dead && dist > 2){
+    enemy.position.add(dir.multiplyScalar(bossSpeed));
   }
 
-  // attack
-  if(attack){
-    attackT+=0.2 + combo*0.05;
-    sword.rotation.z=-Math.PI/2 + attackT*Math.PI;
+  // boss attack (FIXED)
+  bossCooldown--;
 
+  if(!dead && dist < 2 && bossCooldown <= 0){
+    hp--;
+    bossCooldown = ehp < 5 ? 20 : 40; // faster phase 2
+  }
+
+  // sword attack (FIXED)
+  if(attack){
+    attackTime += 0.2;
+
+    sword.rotation.z = -Math.PI/2 + attackTime*Math.PI;
     player.add(sword);
 
-    swordBox.setFromObject(sword);
-    enemyBox.setFromObject(enemy);
-
-    if(ehp>0 && swordBox.intersectsBox(enemyBox)){
+    if(dist < 2 && ehp > 0){
       ehp--;
-      enemy.userData.mat.color.set(0xffffff);
+      enemy.position.add(dir.multiplyScalar(0.5));
     }
 
-    if(attackT>1){
-      attack=false;
-      sword.rotation.z=0;
-      enemy.userData.mat.color.set(0xff0000);
+    if(attackTime > 1){
+      attack = false;
+      sword.rotation.z = 0;
     }
   }
 
   ui();
 
-  if(ehp<=0 && !dead) show("YOU WIN");
-  if(hp<=0 && !dead) show("GAME OVER");
+  if(ehp <= 0 && !dead) show("YOU WIN");
+  if(hp <= 0 && !dead) show("GAME OVER");
 
   renderer.render(scene,camera);
 }
 
 init();
 </script>
-
 </body>
 </html>
