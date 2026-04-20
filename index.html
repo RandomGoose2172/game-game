@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Human Boss Fight FIXED</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: black; }
+
+    #message {
+      position: absolute;
+      top: 40%;
+      width: 100%;
+      text-align: center;
+      font-size: 40px;
+      color: white;
+      font-family: Arial;
+    }
+  </style>
+</head>
+<body>
+
+<div id="message">Loading...</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+
+<!-- ✅ FIXED LOADER (IMPORTANT) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/loaders/GLTFLoader.js"></script>
+
+<script>
+let scene, camera, renderer;
+let player = null, enemy = null;
+
+let loader = new THREE.GLTFLoader();
+
+function init(){
+  scene = new THREE.Scene();
+
+  camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+  camera.position.set(0,5,10);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  // LIGHT
+  let light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(5,10,7);
+  scene.add(light);
+
+  // GROUND (always visible)
+  let ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(50,50),
+    new THREE.MeshStandardMaterial({ color: 0x228B22 })
+  );
+  ground.rotation.x = -Math.PI/2;
+  scene.add(ground);
+
+  // LOAD PLAYER
+  loadHuman(0x00ff00, (model)=>{
+    player = model;
+    player.position.set(0,0,0);
+    scene.add(player);
+  });
+
+  // LOAD ENEMY
+  loadHuman(0xff0000, (model)=>{
+    enemy = model;
+    enemy.position.set(5,0,0);
+    scene.add(enemy);
+  });
+
+  animate();
+}
+
+// 🧍 load model safely
+function loadHuman(color, cb){
+  loader.load(
+    "https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb",
+
+    function(gltf){
+      let model = gltf.scene;
+      model.scale.set(0.5,0.5,0.5);
+
+      model.traverse((o)=>{
+        if(o.isMesh){
+          o.material = o.material.clone();
+          o.material.color.set(color);
+        }
+      });
+
+      cb(model);
+    },
+
+    undefined,
+
+    function(err){
+      console.error("Model failed to load:", err);
+
+      // fallback cube so game NEVER breaks
+      let fallback = new THREE.Mesh(
+        new THREE.BoxGeometry(1,2,1),
+        new THREE.MeshStandardMaterial({ color })
+      );
+
+      cb(fallback);
+    }
+  );
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+
+  // ✅ WAIT until models exist
+  if(!player || !enemy){
+    renderer.render(scene, camera);
+    return;
+  }
+
+  // simple camera follow
+  let mid = new THREE.Vector3().addVectors(player.position, enemy.position).multiplyScalar(0.5);
+  camera.lookAt(mid);
+  camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+10),0.05);
+
+  renderer.render(scene, camera);
+}
+
+init();
+</script>
+
+</body>
+</html>
