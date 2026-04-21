@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Fixed Dodge + Stamina</title>
+  <title>Visible Sword + Trees</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
 
@@ -38,10 +38,10 @@
   <div class="bar"><div id="hp" class="fill"></div></div>
 
   STAMINA
-  <div id="stamBar" class="bar"><div id="stam" class="fill"></div></div>
+  <div class="bar"><div id="stam" class="fill"></div></div>
 
   BOSS
-  <div id="enemyBar" class="bar"><div id="ehp" class="fill"></div></div>
+  <div class="bar"><div id="ehp" class="fill"></div></div>
 </div>
 
 <div id="msg"></div>
@@ -50,14 +50,11 @@
 
 <script>
 let scene, camera, renderer;
-let player, enemy;
+let player, enemy, sword;
 
 let keys = {};
 let attacking = false;
 let attackTimer = 0;
-
-let hp = 5;
-let ehp = 10;
 
 let stamina = 5;
 let maxStamina = 5;
@@ -66,8 +63,11 @@ let dodge = false;
 let dodgeTimer = 0;
 let dodgeCooldown = 0;
 
-let dead = false;
+let hp = 5;
+let ehp = 10;
+
 let bossTimer = 0;
+let dead = false;
 
 // 🧍 character
 function human(color){
@@ -90,7 +90,33 @@ function human(color){
   leg2.position.set(0.2,0.5,0);
   g.add(leg2);
 
+  let arm = new THREE.Mesh(new THREE.BoxGeometry(0.2,1,0.2), m);
+  arm.position.set(0.6,1.6,0);
+  g.add(arm);
+
   return g;
+}
+
+// 🌳 tree
+function tree(x,z){
+  let t = new THREE.Group();
+
+  let trunk = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.3,0.3,3),
+    new THREE.MeshStandardMaterial({color:0x8B4513})
+  );
+  trunk.position.y = 1.5;
+  t.add(trunk);
+
+  let leaves = new THREE.Mesh(
+    new THREE.SphereGeometry(1.5),
+    new THREE.MeshStandardMaterial({color:0x2ecc71})
+  );
+  leaves.position.y = 3.5;
+  t.add(leaves);
+
+  t.position.set(x,0,z);
+  scene.add(t);
 }
 
 function init(){
@@ -102,16 +128,25 @@ function init(){
   renderer.setSize(innerWidth,innerHeight);
   document.body.appendChild(renderer.domElement);
 
-  let light = new THREE.DirectionalLight(0xffffff,1);
+  let light = new THREE.DirectionalLight(0xffffff,1.2);
   light.position.set(5,10,7);
   scene.add(light);
 
+  // 🌱 brighter ground
   let ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(50,50),
-    new THREE.MeshStandardMaterial({color:0x228B22})
+    new THREE.PlaneGeometry(60,60),
+    new THREE.MeshStandardMaterial({color:0x2ecc71})
   );
   ground.rotation.x = -Math.PI/2;
   scene.add(ground);
+
+  // 🌳 LOTS of trees
+  for(let i=0;i<40;i++){
+    let x=(Math.random()-0.5)*50;
+    let z=(Math.random()-0.5)*50;
+    if(Math.abs(x)<6 && Math.abs(z)<6) continue;
+    tree(x,z);
+  }
 
   player = human(0x00ff00);
   enemy = human(0xff0000);
@@ -120,17 +155,32 @@ function init(){
   scene.add(player);
   scene.add(enemy);
 
+  // ⚔️ BIG OBVIOUS SWORD
+  let blade = new THREE.Mesh(
+    new THREE.BoxGeometry(0.3,2.5,0.3), // MUCH BIGGER
+    new THREE.MeshStandardMaterial({
+      color:0xffff00,   // BRIGHT YELLOW
+      emissive:0xffff00,
+      emissiveIntensity:0.8
+    })
+  );
+  blade.position.y = 1.2;
+
+  sword = new THREE.Group();
+  sword.add(blade);
+
+  sword.position.set(1,1.5,0);
+  player.add(sword);
+
   document.addEventListener("keydown", e=>{
     keys[e.key.toLowerCase()] = true;
 
-    // attack
     if(e.code==="Space" && !attacking && stamina >= 1 && !dead){
       attacking = true;
       attackTimer = 0;
       stamina -= 1;
     }
 
-    // dodge
     if(e.key==="q" && stamina >= 2 && dodgeCooldown <= 0 && !dead){
       dodge = true;
       dodgeTimer = 0;
@@ -165,8 +215,6 @@ function animate(){
   requestAnimationFrame(animate);
 
   let speed = 0.1;
-
-  // movement direction vector
   let moveDir = new THREE.Vector3();
 
   if(!dead){
@@ -176,58 +224,49 @@ function animate(){
     if(keys["d"]) moveDir.x += 1;
   }
 
-  if(moveDir.length() > 0){
+  if(moveDir.length()>0){
     moveDir.normalize();
     player.position.add(moveDir.multiplyScalar(speed));
   }
 
-  // 🌀 DODGE SYSTEM (fixed)
   dodgeCooldown--;
-
   if(dodge){
     dodgeTimer++;
 
-    let dodgeDir = moveDir.clone();
+    let d = moveDir.clone();
+    if(d.length()===0) d.z = 1;
 
-    // if not moving → dodge backward
-    if(dodgeDir.length() === 0){
-      dodgeDir.z = 1;
-    }
+    d.normalize();
+    player.position.add(d.multiplyScalar(0.4));
 
-    dodgeDir.normalize();
-    player.position.add(dodgeDir.multiplyScalar(0.4));
-
-    // invincibility window = first half
-    if(dodgeTimer > 20){
-      dodge = false;
-    }
+    if(dodgeTimer > 20) dodge = false;
   }
 
   // camera
   let mid = new THREE.Vector3().addVectors(player.position, enemy.position).multiplyScalar(0.5);
-  camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+10),0.1);
+  camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+12),0.1);
   camera.lookAt(mid);
 
   let dist = player.position.distanceTo(enemy.position);
-
   let dir = new THREE.Vector3().subVectors(player.position, enemy.position).normalize();
 
   if(!dead && dist > 2){
     enemy.position.add(dir.multiplyScalar(0.04));
   }
 
-  // 👊 boss attack (respects dodge)
   bossTimer--;
   if(!dead && dist < 2 && bossTimer <= 0){
-    if(!dodge || dodgeTimer > 10){ // invincibility frames
+    if(!dodge || dodgeTimer > 10){
       hp--;
     }
     bossTimer = 40;
   }
 
-  // ⚔️ attack
+  // ⚔️ BIG SWING
   if(attacking){
     attackTimer++;
+
+    sword.rotation.z = -Math.PI/2 + (attackTimer/20)*Math.PI * 1.5;
 
     if(attackTimer === 10){
       if(dist < 2){
@@ -238,10 +277,10 @@ function animate(){
 
     if(attackTimer > 20){
       attacking = false;
+      sword.rotation.z = 0;
     }
   }
 
-  // ⚡ stamina regen
   if(!attacking && !dodge){
     stamina = Math.min(maxStamina, stamina + 0.02);
   }
