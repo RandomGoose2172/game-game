@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Full Combat Game</title>
+  <title>Fixed Gun Damage Game</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
 
@@ -20,7 +20,7 @@
     }
 
     .fill { height:100%; background:lime; }
-    #ehp .fill { background:red; }
+    #boss .fill { background:red; }
     #stam .fill { background:cyan; }
 
     #msg {
@@ -40,7 +40,7 @@
   <div class="bar"><div id="hp" class="fill"></div></div>
 
   STAMINA
-  <div class="bar"><div id="stamina" class="fill"></div></div>
+  <div class="bar"><div id="stam" class="fill"></div></div>
 
   BOSS
   <div class="bar"><div id="boss" class="fill"></div></div>
@@ -54,9 +54,8 @@
 let scene, camera, renderer;
 let player, enemy, sword;
 
-let bullets = [];
-
 let keys = {};
+let bullets = [];
 
 let attacking = false;
 let attackT = 0;
@@ -74,7 +73,7 @@ let dodgeCD = 0;
 let bossTimer = 0;
 let dead = false;
 
-// 🧍 player/enemy
+// 🧍 character
 function human(color){
   let g = new THREE.Group();
   let m = new THREE.MeshStandardMaterial({color});
@@ -110,10 +109,10 @@ function tree(x,z){
   t.add(trunk);
 
   let leaves = new THREE.Mesh(
-    new THREE.SphereGeometry(1.2),
+    new THREE.SphereGeometry(1.3),
     new THREE.MeshStandardMaterial({color:0x2ecc71})
   );
-  leaves.position.y = 2.6;
+  leaves.position.y = 2.5;
   t.add(leaves);
 
   t.position.set(x,0,z);
@@ -121,9 +120,9 @@ function tree(x,z){
 }
 
 // 🔫 bullet
-function shootBullet(){
+function shoot(){
   let b = new THREE.Mesh(
-    new THREE.SphereGeometry(0.1),
+    new THREE.SphereGeometry(0.12),
     new THREE.MeshBasicMaterial({color:0xff0000})
   );
 
@@ -159,7 +158,7 @@ function init(){
   scene.add(ground);
 
   // 🌳 trees
-  for(let i=0;i<35;i++){
+  for(let i=0;i<30;i++){
     let x=(Math.random()-0.5)*50;
     let z=(Math.random()-0.5)*50;
     if(Math.abs(x)<6 && Math.abs(z)<6) continue;
@@ -195,8 +194,8 @@ function init(){
       stamina -= 1;
     }
 
-    if(e.key==="m" && stamina>=0.3){
-      shootBullet();
+    if(e.key==="m" && stamina>=0.2){
+      shoot();
       stamina -= 0.2;
     }
 
@@ -220,7 +219,7 @@ function init(){
 function ui(){
   document.getElementById("hp").style.width = (hp/5*100)+"%";
   document.getElementById("boss").style.width = (bossHP/10*100)+"%";
-  document.getElementById("stamina").style.width = (stamina/maxStamina*100)+"%";
+  document.getElementById("stam").style.width = (stamina/maxStamina*100)+"%";
 }
 
 function show(t){
@@ -287,19 +286,25 @@ function animate(){
     }
   }
 
-  // 🔫 bullets
+  // 🔫 bullets (FIXED HIT DETECTION)
   for(let i=bullets.length-1;i>=0;i--){
     let b = bullets[i];
-    b.position.add(b.userData.dir.clone().multiplyScalar(0.5));
 
-    if(b.position.distanceTo(enemy.position)<1){
-      bossHP--;
+    b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
+
+    // ✅ FIX: XZ distance check (stable hitbox)
+    let dx = b.position.x - enemy.position.x;
+    let dz = b.position.z - enemy.position.z;
+    let distXZ = Math.sqrt(dx*dx + dz*dz);
+
+    if(distXZ < 1.6){
+      bossHP -= 1;
       scene.remove(b);
       bullets.splice(i,1);
       continue;
     }
 
-    if(b.position.distanceTo(player.position)>50){
+    if(b.position.distanceTo(player.position)>60){
       scene.remove(b);
       bullets.splice(i,1);
     }
@@ -320,6 +325,5 @@ function animate(){
 
 init();
 </script>
-
 </body>
 </html>
