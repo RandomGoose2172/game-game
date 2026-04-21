@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Fixed Gun Damage Game</title>
+  <title>Balanced Sword + Gun Fight</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
 
@@ -54,8 +54,8 @@
 let scene, camera, renderer;
 let player, enemy, sword;
 
-let keys = {};
 let bullets = [];
+let keys = {};
 
 let attacking = false;
 let attackT = 0;
@@ -70,10 +70,12 @@ let dodge = false;
 let dodgeT = 0;
 let dodgeCD = 0;
 
+let gunCooldown = 0;
+
 let bossTimer = 0;
 let dead = false;
 
-// 🧍 character
+// 🧍 human with ARMS
 function human(color){
   let g = new THREE.Group();
   let m = new THREE.MeshStandardMaterial({color});
@@ -94,10 +96,19 @@ function human(color){
   leg2.position.set(0.2,0.5,0);
   g.add(leg2);
 
+  // arms 👇
+  let armL = new THREE.Mesh(new THREE.BoxGeometry(0.25,1,0.25), m);
+  armL.position.set(-0.6,1.6,0);
+  g.add(armL);
+
+  let armR = new THREE.Mesh(new THREE.BoxGeometry(0.25,1,0.25), m);
+  armR.position.set(0.6,1.6,0);
+  g.add(armR);
+
   return g;
 }
 
-// 🌳 trees
+// 🌳 tree
 function tree(x,z){
   let t = new THREE.Group();
 
@@ -122,14 +133,20 @@ function tree(x,z){
 // 🔫 bullet
 function shoot(){
   let b = new THREE.Mesh(
-    new THREE.SphereGeometry(0.12),
+    new THREE.SphereGeometry(0.1),
     new THREE.MeshBasicMaterial({color:0xff0000})
   );
 
   b.position.copy(player.position);
   b.position.y += 1.2;
 
-  let dir = new THREE.Vector3().subVectors(enemy.position, player.position).normalize();
+  let dir = new THREE.Vector3().subVectors(enemy.position, player.position);
+
+  // 🎯 slight spread (nerf accuracy)
+  dir.x += (Math.random()-0.5)*0.15;
+  dir.z += (Math.random()-0.5)*0.15;
+
+  dir.normalize();
 
   b.userData = {dir};
   bullets.push(b);
@@ -194,9 +211,10 @@ function init(){
       stamina -= 1;
     }
 
-    if(e.key==="m" && stamina>=0.2){
+    if(e.key==="m" && stamina>0.2 && gunCooldown<=0){
       shoot();
-      stamina -= 0.2;
+      stamina -= 0.15;
+      gunCooldown = 10; // 🔫 nerfed fire rate
     }
 
     if(e.key==="q" && stamina>=2 && dodgeCD<=0){
@@ -270,10 +288,9 @@ function animate(){
     bossTimer = 40;
   }
 
-  // sword attack
+  // ⚔️ sword
   if(attacking){
     attackT++;
-
     sword.rotation.z = -Math.PI/2 + (attackT/20)*Math.PI;
 
     if(attackT===10 && dist<2){
@@ -286,19 +303,18 @@ function animate(){
     }
   }
 
-  // 🔫 bullets (FIXED HIT DETECTION)
+  // 🔫 bullets
   for(let i=bullets.length-1;i>=0;i--){
     let b = bullets[i];
 
     b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
 
-    // ✅ FIX: XZ distance check (stable hitbox)
     let dx = b.position.x - enemy.position.x;
     let dz = b.position.z - enemy.position.z;
-    let distXZ = Math.sqrt(dx*dx + dz*dz);
+    let d = Math.sqrt(dx*dx + dz*dz);
 
-    if(distXZ < 1.6){
-      bossHP -= 1;
+    if(d<1.6){
+      bossHP -= 0.5;
       scene.remove(b);
       bullets.splice(i,1);
       continue;
@@ -314,6 +330,8 @@ function animate(){
   if(!attacking && !dodge){
     stamina = Math.min(maxStamina, stamina + 0.02);
   }
+
+  gunCooldown--;
 
   ui();
 
