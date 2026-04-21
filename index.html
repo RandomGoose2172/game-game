@@ -295,12 +295,7 @@ function animate(){
   let dist=player.position.distanceTo(enemy.position);
   let dir=new THREE.Vector3().subVectors(enemy.position,player.position).normalize();
 
-  let bossSpeed;
-  if(dist>20){
-    bossSpeed = playerSpeed * 1.5;
-  } else {
-    bossSpeed = playerSpeed * 0.75;
-  }
+  let bossSpeed = dist>20 ? playerSpeed*1.5 : playerSpeed*0.75;
 
   if(bossPhase===2){
     if(dashState===0 && dashCooldown<=0 && dist>4){
@@ -358,7 +353,7 @@ function animate(){
     sword.rotation.z=-Math.PI/2+(attackT/20)*Math.PI;
 
     if(!hitDone && attackT>7 && attackT<13 && dist<2){
-      bossHP-=1;
+      bossHP-=1.8; // ⚔️ stronger sword
       spark(enemy.position);
       shake=0.3;
       hitDone=true;
@@ -375,7 +370,14 @@ function animate(){
     b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
 
     if(b.position.distanceTo(enemy.position)<1.6){
-      bossHP-=0.5;
+
+      let distToEnemy = player.position.distanceTo(enemy.position);
+
+      let damage = 0.8 - (distToEnemy * 0.03);
+      damage = Math.max(0.2, damage);
+
+      bossHP -= damage;
+
       spark(enemy.position);
       scene.remove(b);
       bullets.splice(i,1);
