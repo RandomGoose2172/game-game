@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Visible Sword + Trees</title>
+  <title>Sword + Gun Fighter</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
 
@@ -50,7 +50,7 @@
 
 <script>
 let scene, camera, renderer;
-let player, enemy, sword;
+let player, enemy, sword, laser;
 
 let keys = {};
 let attacking = false;
@@ -59,15 +59,15 @@ let attackTimer = 0;
 let stamina = 5;
 let maxStamina = 5;
 
-let dodge = false;
-let dodgeTimer = 0;
-let dodgeCooldown = 0;
-
 let hp = 5;
 let ehp = 10;
 
 let bossTimer = 0;
 let dead = false;
+
+// 🔫 gun state
+let shooting = false;
+let shootCooldown = 0;
 
 // 🧍 character
 function human(color){
@@ -90,33 +90,7 @@ function human(color){
   leg2.position.set(0.2,0.5,0);
   g.add(leg2);
 
-  let arm = new THREE.Mesh(new THREE.BoxGeometry(0.2,1,0.2), m);
-  arm.position.set(0.6,1.6,0);
-  g.add(arm);
-
   return g;
-}
-
-// 🌳 tree
-function tree(x,z){
-  let t = new THREE.Group();
-
-  let trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.3,0.3,3),
-    new THREE.MeshStandardMaterial({color:0x8B4513})
-  );
-  trunk.position.y = 1.5;
-  t.add(trunk);
-
-  let leaves = new THREE.Mesh(
-    new THREE.SphereGeometry(1.5),
-    new THREE.MeshStandardMaterial({color:0x2ecc71})
-  );
-  leaves.position.y = 3.5;
-  t.add(leaves);
-
-  t.position.set(x,0,z);
-  scene.add(t);
 }
 
 function init(){
@@ -132,21 +106,12 @@ function init(){
   light.position.set(5,10,7);
   scene.add(light);
 
-  // 🌱 brighter ground
   let ground = new THREE.Mesh(
     new THREE.PlaneGeometry(60,60),
     new THREE.MeshStandardMaterial({color:0x2ecc71})
   );
   ground.rotation.x = -Math.PI/2;
   scene.add(ground);
-
-  // 🌳 LOTS of trees
-  for(let i=0;i<40;i++){
-    let x=(Math.random()-0.5)*50;
-    let z=(Math.random()-0.5)*50;
-    if(Math.abs(x)<6 && Math.abs(z)<6) continue;
-    tree(x,z);
-  }
 
   player = human(0x00ff00);
   enemy = human(0xff0000);
@@ -155,37 +120,33 @@ function init(){
   scene.add(player);
   scene.add(enemy);
 
-  // ⚔️ BIG OBVIOUS SWORD
+  // ⚔️ sword
   let blade = new THREE.Mesh(
-    new THREE.BoxGeometry(0.3,2.5,0.3), // MUCH BIGGER
-    new THREE.MeshStandardMaterial({
-      color:0xffff00,   // BRIGHT YELLOW
-      emissive:0xffff00,
-      emissiveIntensity:0.8
-    })
+    new THREE.BoxGeometry(0.3,2,0.3),
+    new THREE.MeshStandardMaterial({color:0xffff00, emissive:0xffff00})
   );
-  blade.position.y = 1.2;
+  blade.position.y = 1;
 
   sword = new THREE.Group();
   sword.add(blade);
-
   sword.position.set(1,1.5,0);
   player.add(sword);
+
+  // 🔴 laser (hidden by default)
+  laser = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.05,0.05,5),
+    new THREE.MeshBasicMaterial({color:0xff0000})
+  );
+  laser.visible = false;
+  scene.add(laser);
 
   document.addEventListener("keydown", e=>{
     keys[e.key.toLowerCase()] = true;
 
-    if(e.code==="Space" && !attacking && stamina >= 1 && !dead){
+    if(e.code==="Space" && !attacking && stamina>=1){
       attacking = true;
       attackTimer = 0;
       stamina -= 1;
-    }
-
-    if(e.key==="q" && stamina >= 2 && dodgeCooldown <= 0 && !dead){
-      dodge = true;
-      dodgeTimer = 0;
-      dodgeCooldown = 60;
-      stamina -= 2;
     }
 
     if(e.key==="r" && dead) location.reload();
@@ -217,29 +178,14 @@ function animate(){
   let speed = 0.1;
   let moveDir = new THREE.Vector3();
 
-  if(!dead){
-    if(keys["w"]) moveDir.z -= 1;
-    if(keys["s"]) moveDir.z += 1;
-    if(keys["a"]) moveDir.x -= 1;
-    if(keys["d"]) moveDir.x += 1;
-  }
+  if(keys["w"]) moveDir.z -= 1;
+  if(keys["s"]) moveDir.z += 1;
+  if(keys["a"]) moveDir.x -= 1;
+  if(keys["d"]) moveDir.x += 1;
 
   if(moveDir.length()>0){
     moveDir.normalize();
     player.position.add(moveDir.multiplyScalar(speed));
-  }
-
-  dodgeCooldown--;
-  if(dodge){
-    dodgeTimer++;
-
-    let d = moveDir.clone();
-    if(d.length()===0) d.z = 1;
-
-    d.normalize();
-    player.position.add(d.multiplyScalar(0.4));
-
-    if(dodgeTimer > 20) dodge = false;
   }
 
   // camera
@@ -248,40 +194,62 @@ function animate(){
   camera.lookAt(mid);
 
   let dist = player.position.distanceTo(enemy.position);
-  let dir = new THREE.Vector3().subVectors(player.position, enemy.position).normalize();
+  let dir = new THREE.Vector3().subVectors(enemy.position, player.position).normalize();
 
-  if(!dead && dist > 2){
-    enemy.position.add(dir.multiplyScalar(0.04));
+  // 👊 boss
+  if(dist > 2){
+    enemy.position.add(dir.clone().multiplyScalar(-0.04));
   }
 
   bossTimer--;
-  if(!dead && dist < 2 && bossTimer <= 0){
-    if(!dodge || dodgeTimer > 10){
-      hp--;
-    }
+  if(dist < 2 && bossTimer<=0){
+    hp--;
     bossTimer = 40;
   }
 
-  // ⚔️ BIG SWING
+  // ⚔️ sword
   if(attacking){
     attackTimer++;
+    sword.rotation.z = -Math.PI/2 + (attackTimer/20)*Math.PI;
 
-    sword.rotation.z = -Math.PI/2 + (attackTimer/20)*Math.PI * 1.5;
-
-    if(attackTimer === 10){
-      if(dist < 2){
-        ehp--;
-        enemy.position.add(dir.multiplyScalar(1));
-      }
+    if(attackTimer===10 && dist<2){
+      ehp--;
     }
 
-    if(attackTimer > 20){
-      attacking = false;
-      sword.rotation.z = 0;
+    if(attackTimer>20){
+      attacking=false;
+      sword.rotation.z=0;
     }
   }
 
-  if(!attacking && !dodge){
+  // 🔫 GUN (hold M)
+  shooting = keys["m"];
+
+  shootCooldown--;
+
+  if(shooting && stamina > 0){
+    // auto aim
+    player.lookAt(enemy.position);
+
+    laser.visible = true;
+
+    // position laser between player and enemy
+    let midPoint = new THREE.Vector3().addVectors(player.position, enemy.position).multiplyScalar(0.5);
+    laser.position.copy(midPoint);
+
+    laser.lookAt(enemy.position);
+
+    if(shootCooldown <= 0){
+      ehp -= 0.5;
+      stamina -= 0.05;
+      shootCooldown = 5;
+    }
+  } else {
+    laser.visible = false;
+  }
+
+  // stamina regen
+  if(!shooting && !attacking){
     stamina = Math.min(maxStamina, stamina + 0.02);
   }
 
