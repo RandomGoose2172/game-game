@@ -374,7 +374,7 @@ function animate(){
 
   bossTimer--;
 
-  // sword (improved)
+  // sword
   if(attacking){
     attackT++;
     sword.rotation.z=-Math.PI/2+(attackT/20)*Math.PI;
@@ -397,7 +397,7 @@ function animate(){
     }
   }
 
-  // player bullets
+  // bullets
   for(let i=bullets.length-1;i>=0;i--){
     let b=bullets[i];
     b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
@@ -418,14 +418,15 @@ function animate(){
     }
   }
 
-  // enemy cubes
+  // enemy cubes (UPDATED DAMAGE)
   for(let i=enemyProjectiles.length-1;i>=0;i--){
     let p=enemyProjectiles[i];
     p.position.add(p.userData.dir.clone().multiplyScalar(0.15));
 
-    if(p.position.distanceTo(player.position)<1.2){
-      hp-=1;
-      shake=0.4;
+    if(p.position.distanceTo(player.position)<1.6){
+      hp-=1.5;
+      shake=0.7;
+      spark(player.position);
       scene.remove(p);
       enemyProjectiles.splice(i,1);
       continue;
