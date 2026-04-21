@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Balanced Sword + Gun Fight</title>
+  <title>Ultimate Boss Fight</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
 
@@ -14,7 +14,8 @@
     }
 
     .bar {
-      width:200px; height:20px;
+      width:200px;
+      height:20px;
       background:#333;
       margin-bottom:5px;
     }
@@ -72,10 +73,36 @@ let dodgeCD = 0;
 
 let gunCooldown = 0;
 
+let bossPhase = 1;
+let bossArms = [];
+
 let bossTimer = 0;
+let shockTimer = 0;
+
+let shake = 0;
 let dead = false;
 
-// 🧍 human with ARMS
+// 📳 screen shake
+function applyShake(){
+  if(shake > 0){
+    camera.position.x += (Math.random()-0.5)*shake;
+    camera.position.y += (Math.random()-0.5)*shake;
+    shake *= 0.9;
+  }
+}
+
+// ✨ spark effect
+function spark(pos){
+  let s = new THREE.Mesh(
+    new THREE.SphereGeometry(0.1),
+    new THREE.MeshBasicMaterial({color:0xffff00})
+  );
+  s.position.copy(pos);
+  scene.add(s);
+  setTimeout(()=>scene.remove(s),100);
+}
+
+// 🧍 character
 function human(color){
   let g = new THREE.Group();
   let m = new THREE.MeshStandardMaterial({color});
@@ -96,7 +123,6 @@ function human(color){
   leg2.position.set(0.2,0.5,0);
   g.add(leg2);
 
-  // arms 👇
   let armL = new THREE.Mesh(new THREE.BoxGeometry(0.25,1,0.25), m);
   armL.position.set(-0.6,1.6,0);
   g.add(armL);
@@ -142,7 +168,6 @@ function shoot(){
 
   let dir = new THREE.Vector3().subVectors(enemy.position, player.position);
 
-  // 🎯 slight spread (nerf accuracy)
   dir.x += (Math.random()-0.5)*0.15;
   dir.z += (Math.random()-0.5)*0.15;
 
@@ -151,6 +176,29 @@ function shoot(){
   b.userData = {dir};
   bullets.push(b);
   scene.add(b);
+}
+
+// 👹 boss phase 2
+function upgradeBoss(){
+  bossPhase = 2;
+
+  for(let i=0;i<4;i++){
+    let arm = new THREE.Mesh(
+      new THREE.BoxGeometry(0.25,1.2,0.25),
+      new THREE.MeshStandardMaterial({color:0xaa0000})
+    );
+
+    let angle = (i/4)*Math.PI*2;
+
+    arm.position.set(
+      Math.cos(angle)*1.2,
+      1.5,
+      Math.sin(angle)*1.2
+    );
+
+    enemy.add(arm);
+    bossArms.push(arm);
+  }
 }
 
 function init(){
@@ -166,7 +214,6 @@ function init(){
   light.position.set(5,10,7);
   scene.add(light);
 
-  // 🌱 ground
   let ground = new THREE.Mesh(
     new THREE.PlaneGeometry(60,60),
     new THREE.MeshStandardMaterial({color:0x2ecc71})
@@ -174,7 +221,6 @@ function init(){
   ground.rotation.x = -Math.PI/2;
   scene.add(ground);
 
-  // 🌳 trees
   for(let i=0;i<30;i++){
     let x=(Math.random()-0.5)*50;
     let z=(Math.random()-0.5)*50;
@@ -190,7 +236,6 @@ function init(){
   scene.add(player);
   scene.add(enemy);
 
-  // ⚔️ sword
   let blade = new THREE.Mesh(
     new THREE.BoxGeometry(0.2,2,0.2),
     new THREE.MeshStandardMaterial({color:0xffff00, emissive:0xffff00})
@@ -214,7 +259,7 @@ function init(){
     if(e.key==="m" && stamina>0.2 && gunCooldown<=0){
       shoot();
       stamina -= 0.15;
-      gunCooldown = 10; // 🔫 nerfed fire rate
+      gunCooldown = 10;
     }
 
     if(e.key==="q" && stamina>=2 && dodgeCD<=0){
@@ -263,7 +308,6 @@ function animate(){
     player.position.add(move.multiplyScalar(speed));
   }
 
-  // dodge
   dodgeCD--;
   if(dodge){
     dodgeT++;
@@ -271,30 +315,41 @@ function animate(){
     if(dodgeT>20) dodge=false;
   }
 
-  // camera
   let mid = new THREE.Vector3().addVectors(player.position, enemy.position).multiplyScalar(0.5);
   camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+12),0.1);
   camera.lookAt(mid);
 
+  applyShake();
+
   let dist = player.position.distanceTo(enemy.position);
   let dir = new THREE.Vector3().subVectors(enemy.position, player.position).normalize();
 
-  // boss AI
   bossTimer--;
+  shockTimer--;
+
+  let bossSpeed = bossPhase === 2 ? 0.09 : 0.04;
+
   if(dist>2){
-    enemy.position.add(dir.clone().multiplyScalar(-0.04));
+    enemy.position.add(dir.clone().multiplyScalar(-bossSpeed));
   } else if(bossTimer<=0){
-    hp--;
-    bossTimer = 40;
+    hp -= bossPhase === 2 ? 2 : 1;
+    bossTimer = bossPhase === 2 ? 18 : 40;
   }
 
-  // ⚔️ sword
+  if(bossPhase === 2 && shockTimer<=0 && dist<3){
+    hp -= 2;
+    shake = 0.6;
+    shockTimer = 120;
+  }
+
   if(attacking){
     attackT++;
     sword.rotation.z = -Math.PI/2 + (attackT/20)*Math.PI;
 
     if(attackT===10 && dist<2){
-      bossHP--;
+      bossHP -= 1;
+      spark(enemy.position);
+      shake = 0.2;
     }
 
     if(attackT>20){
@@ -303,11 +358,15 @@ function animate(){
     }
   }
 
-  // 🔫 bullets
   for(let i=bullets.length-1;i>=0;i--){
     let b = bullets[i];
 
     b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
+
+    if(bossPhase === 2 && Math.random() < 0.02){
+      enemy.position.x += (Math.random()-0.5)*1.5;
+      enemy.position.z += (Math.random()-0.5)*1.5;
+    }
 
     let dx = b.position.x - enemy.position.x;
     let dz = b.position.z - enemy.position.z;
@@ -315,6 +374,8 @@ function animate(){
 
     if(d<1.6){
       bossHP -= 0.5;
+      spark(enemy.position);
+      shake = 0.1;
       scene.remove(b);
       bullets.splice(i,1);
       continue;
@@ -326,12 +387,21 @@ function animate(){
     }
   }
 
-  // stamina regen
   if(!attacking && !dodge){
     stamina = Math.min(maxStamina, stamina + 0.02);
   }
 
   gunCooldown--;
+
+  if(bossHP <= 5 && bossPhase === 1){
+    upgradeBoss();
+  }
+
+  if(bossPhase === 2){
+    bossArms.forEach((a,i)=>{
+      a.rotation.y += 0.05 + i*0.01;
+    });
+  }
 
   ui();
 
@@ -343,5 +413,6 @@ function animate(){
 
 init();
 </script>
+
 </body>
 </html>
