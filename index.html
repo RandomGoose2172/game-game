@@ -297,6 +297,7 @@ function animate(){
 
   let bossSpeed = dist>20 ? playerSpeed*1.5 : playerSpeed*0.75;
 
+  // ===== DASH (PHASE 2 ONLY) =====
   if(bossPhase===2){
     if(dashState===0 && dashCooldown<=0 && dist>4){
       dashState=1; dashTimer=30;
@@ -348,14 +349,20 @@ function animate(){
 
   bossTimer--;
 
+  // ===== IMPROVED SWORD =====
   if(attacking){
     attackT++;
-    sword.rotation.z=-Math.PI/2+(attackT/20)*Math.PI;
+    sword.rotation.z = -Math.PI/2 + (attackT/20)*Math.PI;
 
-    if(!hitDone && attackT>7 && attackT<13 && dist<2){
-      bossHP-=1.8; // ⚔️ stronger sword
+    if(attackT < 10){
+      let assistDir = new THREE.Vector3().subVectors(enemy.position, player.position).normalize();
+      player.position.add(assistDir.multiplyScalar(0.04));
+    }
+
+    if(!hitDone && attackT > 5 && attackT < 15 && dist < 2.8){
+      bossHP -= 1.8;
       spark(enemy.position);
-      shake=0.3;
+      shake=0.35;
       hitDone=true;
     }
 
@@ -365,14 +372,13 @@ function animate(){
     }
   }
 
+  // ===== BULLETS =====
   for(let i=bullets.length-1;i>=0;i--){
     let b=bullets[i];
     b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
 
     if(b.position.distanceTo(enemy.position)<1.6){
-
       let distToEnemy = player.position.distanceTo(enemy.position);
-
       let damage = 0.8 - (distToEnemy * 0.03);
       damage = Math.max(0.2, damage);
 
