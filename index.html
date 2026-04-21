@@ -27,12 +27,9 @@
 <script>
 let scene, camera, renderer;
 let player, enemy, sword;
-
-let bullets = [];
-let keys = {};
+let bullets=[], keys={};
 
 let attacking=false, attackT=0, hitDone=false;
-
 let stamina=5, maxStamina=5;
 let hp=5, bossHP=10;
 
@@ -46,10 +43,9 @@ let bossTimer=0, shockTimer=0;
 let dashState=0, dashTimer=0, dashDir=new THREE.Vector3(), dashCooldown=0;
 
 let shake=0, dead=false;
-
 let bossMaterial;
 
-// 📳 shake
+// ===== effects =====
 function applyShake(){
   if(shake>0){
     camera.position.x+=(Math.random()-0.5)*shake;
@@ -58,7 +54,6 @@ function applyShake(){
   }
 }
 
-// ✨ spark
 function spark(pos){
   let s=new THREE.Mesh(
     new THREE.SphereGeometry(0.1),
@@ -69,7 +64,7 @@ function spark(pos){
   setTimeout(()=>scene.remove(s),100);
 }
 
-// 🧍 character
+// ===== character =====
 function human(color){
   let g=new THREE.Group();
 
@@ -94,11 +89,11 @@ function human(color){
   let armR=new THREE.Mesh(new THREE.BoxGeometry(0.25,1,0.25),limbMat);
   armR.position.set(0.6,1.6,0); g.add(armR);
 
-  g.userData.material = bodyMat;
+  g.userData.material=bodyMat;
   return g;
 }
 
-// 🌳 tree
+// ===== tree =====
 function tree(x,z){
   let t=new THREE.Group();
 
@@ -120,7 +115,7 @@ function tree(x,z){
   scene.add(t);
 }
 
-// 🔫 shoot
+// ===== shoot =====
 function shoot(){
   let b=new THREE.Mesh(
     new THREE.SphereGeometry(0.1),
@@ -137,7 +132,7 @@ function shoot(){
   scene.add(b);
 }
 
-// 👹 phase 2
+// ===== boss phase =====
 function upgradeBoss(){
   bossPhase=2;
 
@@ -155,6 +150,7 @@ function upgradeBoss(){
   }
 }
 
+// ===== init =====
 function init(){
   scene=new THREE.Scene();
 
@@ -186,7 +182,7 @@ function init(){
   enemy=human(0xff0000);
   enemy.position.set(5,0,0);
 
-  bossMaterial = enemy.userData.material;
+  bossMaterial=enemy.userData.material;
 
   scene.add(player);
   scene.add(enemy);
@@ -195,8 +191,8 @@ function init(){
     new THREE.BoxGeometry(0.2,2,0.2),
     new THREE.MeshStandardMaterial({color:0xffff00,emissive:0xffff00})
   );
-  blade.position.y=1;
 
+  blade.position.y=1;
   sword=new THREE.Group();
   sword.add(blade);
   sword.position.set(0.8,1.5,0);
@@ -212,10 +208,13 @@ function init(){
     if(e.key==="m" && stamina>0.2 && gunCooldown<=0){
       if(gunTimer<=0){ gunTimer=120; gunHeat=0; }
       gunHeat++;
+
       if(gunHeat>6){
         hp-=2; shake=0.8; spark(player.position);
-        gunHeat=0; gunTimer=0; gunCooldown=50; return;
+        gunHeat=0; gunTimer=0; gunCooldown=50;
+        return;
       }
+
       shoot(); stamina-=0.2; gunCooldown=10;
     }
 
@@ -233,6 +232,7 @@ function init(){
   animate();
 }
 
+// ===== UI =====
 function ui(){
   hp=Math.max(0,hp);
   document.getElementById("hp").style.width=(hp/5*100)+"%";
@@ -247,6 +247,7 @@ function show(t){
   dead=true;
 }
 
+// ===== main loop =====
 function animate(){
   requestAnimationFrame(animate);
 
@@ -262,7 +263,7 @@ function animate(){
   if(keys["a"]) move.x-=1;
   if(keys["d"]) move.x+=1;
 
-  const playerSpeed = 0.1;
+  const playerSpeed=0.1;
 
   if(move.length()>0){
     move.normalize();
@@ -273,14 +274,6 @@ function animate(){
   player.position.x=Math.max(-limit,Math.min(limit,player.position.x));
   player.position.z=Math.max(-limit,Math.min(limit,player.position.z));
 
-  if(dodge){
-    dodgeT++;
-    if(move.length()>0){
-      player.position.add(move.clone().normalize().multiplyScalar(0.4));
-    }
-    if(dodgeT>20) dodge=false;
-  }
-
   let mid=new THREE.Vector3().addVectors(player.position,enemy.position).multiplyScalar(0.5);
   camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+12),0.1);
   camera.lookAt(mid);
@@ -290,27 +283,18 @@ function animate(){
   let dist=player.position.distanceTo(enemy.position);
   let dir=new THREE.Vector3().subVectors(enemy.position,player.position).normalize();
 
-  bossTimer--;
-  shockTimer--;
+  // 🔥 conditional speed
+  let bossSpeed = dist>20 ? playerSpeed*1.5 : playerSpeed;
 
-  // 🚀 conditional speed
-  let bossSpeed;
-  if(dist > 20){
-    bossSpeed = playerSpeed * 1.5;
-  } else {
-    bossSpeed = playerSpeed;
+  if(dist>2){
+    enemy.position.add(dir.clone().multiplyScalar(-bossSpeed));
   }
 
-  // (rest unchanged...)
-  if(dashState===0){
-    if(dist>2){
-      enemy.position.add(dir.clone().multiplyScalar(-bossSpeed));
-    } else if(bossTimer<=0){
-      hp -= bossPhase===2 ? 2 : 1;
-      bossTimer = bossPhase===2 ? 18 : 40;
-    }
-  }
+  renderer.render(scene,camera);
+}
 
-  // (rest of code continues exactly same...)
-  // truncated here for readability in explanation
-  
+init();
+</script>
+
+</body>
+</html>
