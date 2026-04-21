@@ -27,9 +27,12 @@
 <script>
 let scene, camera, renderer;
 let player, enemy, sword;
-let bullets=[], keys={};
+
+let bullets = [];
+let keys = {};
 
 let attacking=false, attackT=0, hitDone=false;
+
 let stamina=5, maxStamina=5;
 let hp=5, bossHP=10;
 
@@ -45,7 +48,7 @@ let dashState=0, dashTimer=0, dashDir=new THREE.Vector3(), dashCooldown=0;
 let shake=0, dead=false;
 let bossMaterial;
 
-// ===== effects =====
+// effects
 function applyShake(){
   if(shake>0){
     camera.position.x+=(Math.random()-0.5)*shake;
@@ -64,7 +67,7 @@ function spark(pos){
   setTimeout(()=>scene.remove(s),100);
 }
 
-// ===== character =====
+// character
 function human(color){
   let g=new THREE.Group();
 
@@ -89,11 +92,11 @@ function human(color){
   let armR=new THREE.Mesh(new THREE.BoxGeometry(0.25,1,0.25),limbMat);
   armR.position.set(0.6,1.6,0); g.add(armR);
 
-  g.userData.material=bodyMat;
+  g.userData.material = bodyMat;
   return g;
 }
 
-// ===== tree =====
+// tree
 function tree(x,z){
   let t=new THREE.Group();
 
@@ -115,7 +118,7 @@ function tree(x,z){
   scene.add(t);
 }
 
-// ===== shoot =====
+// shoot
 function shoot(){
   let b=new THREE.Mesh(
     new THREE.SphereGeometry(0.1),
@@ -126,13 +129,13 @@ function shoot(){
   b.position.y+=1.2;
 
   let dir=new THREE.Vector3().subVectors(enemy.position,player.position).normalize();
-
   b.userData={dir};
+
   bullets.push(b);
   scene.add(b);
 }
 
-// ===== boss phase =====
+// phase 2
 function upgradeBoss(){
   bossPhase=2;
 
@@ -150,7 +153,7 @@ function upgradeBoss(){
   }
 }
 
-// ===== init =====
+// init
 function init(){
   scene=new THREE.Scene();
 
@@ -182,14 +185,14 @@ function init(){
   enemy=human(0xff0000);
   enemy.position.set(5,0,0);
 
-  bossMaterial=enemy.userData.material;
+  bossMaterial = enemy.userData.material;
 
   scene.add(player);
   scene.add(enemy);
 
   let blade=new THREE.Mesh(
     new THREE.BoxGeometry(0.2,2,0.2),
-    new THREE.MeshStandardMaterial({color:0xffff00,emissive:0xffff00})
+    new THREE.MeshStandardMaterial({color:0xffff00, emissive:0xffff00})
   );
 
   blade.position.y=1;
@@ -232,7 +235,7 @@ function init(){
   animate();
 }
 
-// ===== UI =====
+// UI
 function ui(){
   hp=Math.max(0,hp);
   document.getElementById("hp").style.width=(hp/5*100)+"%";
@@ -247,7 +250,7 @@ function show(t){
   dead=true;
 }
 
-// ===== main loop =====
+// MAIN LOOP
 function animate(){
   requestAnimationFrame(animate);
 
@@ -283,12 +286,120 @@ function animate(){
   let dist=player.position.distanceTo(enemy.position);
   let dir=new THREE.Vector3().subVectors(enemy.position,player.position).normalize();
 
-  // 🔥 conditional speed
   let bossSpeed = dist>20 ? playerSpeed*1.5 : playerSpeed;
 
-  if(dist>2){
-    enemy.position.add(dir.clone().multiplyScalar(-bossSpeed));
+  // DASH
+  if(bossPhase===2){
+    if(dashState===0 && dashCooldown<=0 && dist>4){
+      dashState=1;
+      dashTimer=30;
+      dashDir.copy(dir.clone().multiplyScalar(-1));
+    }
+
+    if(dashState===1){
+      dashTimer--;
+
+      let pulse = Math.sin(Date.now()*0.02)*0.5+0.5;
+      bossMaterial.emissive.setRGB(1,pulse*0.2,pulse*0.2);
+      bossMaterial.emissiveIntensity = 2;
+
+      if(dashTimer<=0){
+        dashState=2;
+        dashTimer=20;
+        bossMaterial.emissive.setHex(0x000000);
+      }
+    }
+    else if(dashState===2){
+      enemy.position.add(dashDir.clone().multiplyScalar(0.5));
+      dashTimer--;
+
+      if(dist<2){
+        hp-=2;
+        shake=0.6;
+        dashState=0;
+        dashCooldown=120;
+      }
+
+      if(dashTimer<=0){
+        dashState=0;
+        dashCooldown=120;
+      }
+    }
   }
+
+  // movement (circle)
+  if(dashState===0){
+    if(dist>2){
+      let circle = new THREE.Vector3(-dir.z,0,dir.x);
+      enemy.position.add(circle.multiplyScalar(0.05));
+      enemy.position.add(dir.clone().multiplyScalar(-bossSpeed*0.7));
+    }
+    else if(bossTimer<=0){
+      hp -= bossPhase===2 ? 2 : 1;
+      bossTimer = bossPhase===2 ? 18 : 40;
+      shake=0.3;
+    }
+  }
+
+  bossTimer--;
+
+  // sword
+  if(attacking){
+    attackT++;
+    sword.rotation.z = -Math.PI/2 + (attackT/20)*Math.PI;
+
+    if(!hitDone && attackT>7 && attackT<13 && dist<2){
+      bossHP -= 1;
+      spark(enemy.position);
+      shake=0.3;
+      hitDone=true;
+    }
+
+    if(attackT>20){
+      attacking=false;
+      sword.rotation.z=0;
+    }
+  }
+
+  // bullets
+  for(let i=bullets.length-1;i>=0;i--){
+    let b=bullets[i];
+    b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
+
+    if(b.position.distanceTo(enemy.position)<1.6){
+      bossHP-=0.5;
+      spark(enemy.position);
+      scene.remove(b);
+      bullets.splice(i,1);
+      continue;
+    }
+
+    if(b.position.distanceTo(player.position)>60){
+      scene.remove(b);
+      bullets.splice(i,1);
+    }
+  }
+
+  if(!attacking && !dodge){
+    stamina=Math.min(maxStamina, stamina+0.02);
+  }
+
+  gunCooldown--;
+
+  if(bossHP<=5 && bossPhase===1){
+    upgradeBoss();
+  }
+
+  if(bossPhase===2){
+    bossArms.forEach((a,i)=>{
+      a.rotation.y += 0.05 + i*0.01;
+    });
+  }
+
+  ui();
+
+  if(bossHP<=0 && !dead) show("YOU WIN");
+  if(hp<=0 && !dead) show("GAME OVER");
 
   renderer.render(scene,camera);
 }
