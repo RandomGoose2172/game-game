@@ -41,14 +41,14 @@ let dodge=false, dodgeT=0, dodgeCD=0;
 let gunCooldown=0, gunHeat=0, gunTimer=0;
 
 let bossPhase=1, bossArms=[];
-let bossTimer=0, shockTimer=0;
+let bossTimer=0;
 
 let dashState=0, dashTimer=0, dashDir=new THREE.Vector3(), dashCooldown=0;
 
 let shake=0, dead=false;
 let bossMaterial;
 
-// effects
+// ===== effects =====
 function applyShake(){
   if(shake>0){
     camera.position.x+=(Math.random()-0.5)*shake;
@@ -67,7 +67,7 @@ function spark(pos){
   setTimeout(()=>scene.remove(s),100);
 }
 
-// character
+// ===== character =====
 function human(color){
   let g=new THREE.Group();
 
@@ -96,7 +96,7 @@ function human(color){
   return g;
 }
 
-// tree
+// ===== tree =====
 function tree(x,z){
   let t=new THREE.Group();
 
@@ -118,7 +118,7 @@ function tree(x,z){
   scene.add(t);
 }
 
-// shoot
+// ===== shoot =====
 function shoot(){
   let b=new THREE.Mesh(
     new THREE.SphereGeometry(0.1),
@@ -135,7 +135,7 @@ function shoot(){
   scene.add(b);
 }
 
-// phase 2
+// ===== phase 2 =====
 function upgradeBoss(){
   bossPhase=2;
 
@@ -153,7 +153,7 @@ function upgradeBoss(){
   }
 }
 
-// init
+// ===== init =====
 function init(){
   scene=new THREE.Scene();
 
@@ -235,7 +235,7 @@ function init(){
   animate();
 }
 
-// UI
+// ===== UI =====
 function ui(){
   hp=Math.max(0,hp);
   document.getElementById("hp").style.width=(hp/5*100)+"%";
@@ -250,7 +250,7 @@ function show(t){
   dead=true;
 }
 
-// MAIN LOOP
+// ===== main loop =====
 function animate(){
   requestAnimationFrame(animate);
 
@@ -273,9 +273,19 @@ function animate(){
     player.position.add(move.multiplyScalar(playerSpeed));
   }
 
+  // map bounds
   const limit=29;
   player.position.x=Math.max(-limit,Math.min(limit,player.position.x));
   player.position.z=Math.max(-limit,Math.min(limit,player.position.z));
+
+  // dodge movement
+  if(dodge){
+    dodgeT++;
+    if(move.length()>0){
+      player.position.add(move.clone().normalize().multiplyScalar(0.4));
+    }
+    if(dodgeT>20) dodge=false;
+  }
 
   let mid=new THREE.Vector3().addVectors(player.position,enemy.position).multiplyScalar(0.5);
   camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+12),0.1);
@@ -288,8 +298,9 @@ function animate(){
 
   let bossSpeed = dist>20 ? playerSpeed*1.5 : playerSpeed;
 
-  // DASH
-  if(bossPhase===2){
+  // ===== DASH (PHASE 2 ONLY) =====
+  if(bossPhase === 2){
+
     if(dashState===0 && dashCooldown<=0 && dist>4){
       dashState=1;
       dashTimer=30;
@@ -309,6 +320,7 @@ function animate(){
         bossMaterial.emissive.setHex(0x000000);
       }
     }
+
     else if(dashState===2){
       enemy.position.add(dashDir.clone().multiplyScalar(0.5));
       dashTimer--;
@@ -325,9 +337,12 @@ function animate(){
         dashCooldown=120;
       }
     }
+
+  } else {
+    dashState = 0;
   }
 
-  // movement (circle)
+  // movement
   if(dashState===0){
     if(dist>2){
       let circle = new THREE.Vector3(-dir.z,0,dir.x);
@@ -380,12 +395,14 @@ function animate(){
     }
   }
 
+  // stamina regen
   if(!attacking && !dodge){
-    stamina=Math.min(maxStamina, stamina+0.02);
+    stamina = Math.min(maxStamina, stamina + 0.025);
   }
 
   gunCooldown--;
 
+  // phase 2 trigger
   if(bossHP<=5 && bossPhase===1){
     upgradeBoss();
   }
