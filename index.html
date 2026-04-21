@@ -60,6 +60,7 @@ let keys = {};
 
 let attacking = false;
 let attackT = 0;
+let hitDone = false; // ✅ prevents multi-hit bug
 
 let stamina = 5;
 let maxStamina = 5;
@@ -166,10 +167,6 @@ function shoot(){
   b.position.y += 1.2;
 
   let dir = new THREE.Vector3().subVectors(enemy.position, player.position);
-
-  dir.x += (Math.random()-0.5)*0.15;
-  dir.z += (Math.random()-0.5)*0.15;
-
   dir.normalize();
 
   b.userData = {dir};
@@ -219,16 +216,8 @@ function init(){
   ground.rotation.x = -Math.PI/2;
   scene.add(ground);
 
-  for(let i=0;i<30;i++){
-    let x=(Math.random()-0.5)*50;
-    let z=(Math.random()-0.5)*50;
-    if(Math.abs(x)<6 && Math.abs(z)<6) continue;
-    tree(x,z);
-  }
-
   player = human(0x00ff00);
   enemy = human(0xff0000);
-
   enemy.position.set(5,0,0);
 
   scene.add(player);
@@ -251,9 +240,11 @@ function init(){
     if(e.code==="Space" && !attacking && stamina>=1){
       attacking = true;
       attackT = 0;
+      hitDone = false; // reset hit
       stamina -= 1;
     }
 
+    // 🔫 SHOOT + OVERHEAT
     if(e.key==="m" && stamina>0.2 && gunCooldown<=0){
 
       if(gunTimer <= 0){
@@ -265,16 +256,16 @@ function init(){
 
       if(gunHeat > 6){
         hp -= 2;
-        shake = 0.7;
+        shake = 0.8;
         spark(player.position);
         gunHeat = 0;
         gunTimer = 0;
-        gunCooldown = 40;
+        gunCooldown = 50;
         return;
       }
 
       shoot();
-      stamina -= 0.15;
+      stamina -= 0.2;
       gunCooldown = 10;
     }
 
@@ -316,7 +307,6 @@ function animate(){
     gunHeat = 0;
   }
 
-  let speed = 0.1;
   let move = new THREE.Vector3();
 
   if(keys["w"]) move.z -= 1;
@@ -326,10 +316,9 @@ function animate(){
 
   if(move.length()>0){
     move.normalize();
-    player.position.add(move.multiplyScalar(speed));
+    player.position.add(move.multiplyScalar(0.1));
   }
 
-  dodgeCD--;
   if(dodge){
     dodgeT++;
     if(move.length() > 0){
@@ -348,31 +337,24 @@ function animate(){
   let dir = new THREE.Vector3().subVectors(enemy.position, player.position).normalize();
 
   bossTimer--;
-  shockTimer--;
-
-  let bossSpeed = bossPhase === 2 ? 0.09 : 0.04;
 
   if(dist>2){
-    enemy.position.add(dir.clone().multiplyScalar(-bossSpeed));
+    enemy.position.add(dir.clone().multiplyScalar(-0.05));
   } else if(bossTimer<=0){
-    hp -= bossPhase === 2 ? 2 : 1;
-    bossTimer = bossPhase === 2 ? 18 : 40;
+    hp -= 1;
+    bossTimer = 40;
   }
 
-  if(bossPhase === 2 && shockTimer<=0 && dist<3){
-    hp -= 2;
-    shake = 0.6;
-    shockTimer = 120;
-  }
-
+  // ✅ FIXED sword hit window
   if(attacking){
     attackT++;
     sword.rotation.z = -Math.PI/2 + (attackT/20)*Math.PI;
 
-    if(attackT===10 && dist<2){
+    if(!hitDone && attackT > 7 && attackT < 13 && dist < 2){
       bossHP -= 1;
       spark(enemy.position);
-      shake = 0.2;
+      shake = 0.3;
+      hitDone = true;
     }
 
     if(attackT>20){
@@ -386,19 +368,9 @@ function animate(){
 
     b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
 
-    if(bossPhase === 2 && Math.random() < 0.02){
-      enemy.position.x += (Math.random()-0.5)*1.5;
-      enemy.position.z += (Math.random()-0.5)*1.5;
-    }
-
-    let dx = b.position.x - enemy.position.x;
-    let dz = b.position.z - enemy.position.z;
-    let d = Math.sqrt(dx*dx + dz*dz);
-
-    if(d<1.6){
+    if(b.position.distanceTo(enemy.position)<1.6){
       bossHP -= 0.5;
       spark(enemy.position);
-      shake = 0.1;
       scene.remove(b);
       bullets.splice(i,1);
       continue;
@@ -415,16 +387,6 @@ function animate(){
   }
 
   gunCooldown--;
-
-  if(bossHP <= 5 && bossPhase === 1){
-    upgradeBoss();
-  }
-
-  if(bossPhase === 2){
-    bossArms.forEach((a,i)=>{
-      a.rotation.y += 0.05 + i*0.01;
-    });
-  }
 
   ui();
 
