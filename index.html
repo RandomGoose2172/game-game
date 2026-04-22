@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Ultimate boss fight</title>
+  <title>Super boss fight</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
     #ui { position:absolute; top:10px; left:10px; color:white; font-family:Arial; z-index:10; }
@@ -46,6 +46,8 @@ let dashCooldown=0, dashActive=false, dashDir=new THREE.Vector3(), dashTime=0;
 let dodge=false, dodgeT=0, dodgeCD=0;
 
 let gunHeat=0, gunTimer=0;
+
+let slamCharge=0, slamCooldown=0;
 
 let dead=false;
 
@@ -219,26 +221,14 @@ function init(){
   document.addEventListener("keydown",e=>{
     keys[e.key.toLowerCase()]=true;
 
-    if(e.code==="ShiftLeft"){
-      shielding=true;
-      parryWindow=10;
-    }
-
+    if(e.code==="ShiftLeft"){ shielding=true; parryWindow=10; }
     if(e.code==="Space" && stamina>=1){
       attacking=true; attackT=0; hitDone=false; stamina-=1;
     }
-
-    if(e.key==="m" && stamina>0.2){
-      shoot(); stamina-=0.2;
-    }
-
+    if(e.key==="m" && stamina>0.2){ shoot(); stamina-=0.2; }
     if(e.key==="q" && stamina>=2 && dodgeCD<=0){
-      dodge=true;
-      dodgeT=0;
-      stamina-=2;
-      dodgeCD=60;
+      dodge=true; dodgeT=0; stamina-=2; dodgeCD=60;
     }
-
     if(e.key==="r" && dead) location.reload();
   });
 
@@ -292,6 +282,25 @@ function animate(){
 
   enemy.position.add(dir.multiplyScalar(-speed));
 
+  // ===== SLAM =====
+  slamCooldown--;
+  if(!dashActive && slamCooldown<=0 && dist<3){
+    slamCharge++;
+    if(slamCharge>40){
+      if(player.position.distanceTo(enemy.position)<3){
+        if(!shielding && !dodge){
+          hp-=2;
+          spark(player.position);
+        }
+      }
+      slamCharge=0;
+      slamCooldown=120;
+    }
+  } else {
+    slamCharge=0;
+  }
+
+  // ===== DASH =====
   if(bossPhase===2){
     dashCooldown--;
     if(!dashActive && dashCooldown<=0){
@@ -311,12 +320,15 @@ function animate(){
     if(dashTime<=0) dashActive=false;
   }
 
+  // ===== OCCASIONAL SHOOTING =====
   shootTimer--;
   if(shootTimer<=0){
-    shootCube();
-    shootTimer = bossPhase===2 ? 40 : 70;
+    let chance = bossPhase===2 ? 0.6 : 0.35;
+    if(Math.random()<chance) shootCube();
+    shootTimer = bossPhase===2 ? 30+Math.random()*40 : 60+Math.random()*60;
   }
 
+  // ===== cubes =====
   for(let i=enemyProjectiles.length-1;i>=0;i--){
     let p=enemyProjectiles[i];
 
@@ -337,7 +349,6 @@ function animate(){
     }
 
     if(p.position.distanceTo(player.position)<1.6){
-
       if(parryWindow>0){
         let reflect=new THREE.Vector3().subVectors(enemy.position,p.position).normalize();
         p.userData.dir.copy(reflect);
@@ -360,6 +371,7 @@ function animate(){
     }
   }
 
+  // ===== bullets =====
   for(let i=bullets.length-1;i>=0;i--){
     let b=bullets[i];
     b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
@@ -371,6 +383,7 @@ function animate(){
     }
   }
 
+  // ===== sword =====
   if(attacking){
     attackT++;
     sword.rotation.z=-Math.PI/2+(attackT/20)*Math.PI;
