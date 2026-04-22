@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Super Boss Fight</title>
+  <title>Ultimate Boss Fight</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
     #ui { position:absolute; top:10px; left:10px; color:white; font-family:Arial; z-index:10; }
@@ -399,7 +399,35 @@ function animate(){
     document.getElementById("msg").style.display="block";
     dead=true;
   }
+// ===== BULLETS (FIXED) =====
+for(let i=bullets.length-1;i>=0;i--){
+  let b=bullets[i];
 
+  // move bullet
+  b.position.add(b.userData.dir.clone().multiplyScalar(0.5));
+
+  // hit boss (bigger hitbox so it feels good)
+  if(b.position.distanceTo(enemy.position)<1.8){
+
+    // 💥 distance-based damage
+    let distShot = b.userData.start.distanceTo(b.position);
+    let dmg = Math.max(0.2, 1.2 - distShot * 0.05);
+
+    bossHP -= dmg;
+
+    spark(enemy.position);
+
+    scene.remove(b);
+    bullets.splice(i,1);
+    continue;
+  }
+
+  // cleanup far bullets
+  if(b.position.distanceTo(player.position)>60){
+    scene.remove(b);
+    bullets.splice(i,1);
+  }
+}
   renderer.render(scene,camera);
 }
 
