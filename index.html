@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Super boss fight</title>
+  <title>Ultimate boss fight</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
     #ui { position:absolute; top:10px; left:10px; color:white; font-family:Arial; z-index:10; }
@@ -43,6 +43,10 @@ let shootTimer=0;
 
 let dashCooldown=0, dashActive=false, dashDir=new THREE.Vector3(), dashTime=0;
 
+let dodge=false, dodgeT=0, dodgeCD=0;
+
+let gunHeat=0, gunTimer=0;
+
 let dead=false;
 
 // ===== effects =====
@@ -83,7 +87,7 @@ function makeHuman(color){
   return g;
 }
 
-// ===== boss phase 2 =====
+// ===== phase 2 =====
 function upgradeBoss(){
   bossPhase=2;
 
@@ -103,6 +107,17 @@ function upgradeBoss(){
 
 // ===== shoot =====
 function shoot(){
+  if(gunTimer<=0){ gunTimer=120; gunHeat=0; }
+  gunHeat++;
+
+  if(gunHeat>6){
+    hp-=2;
+    spark(player.position);
+    gunHeat=0;
+    gunTimer=0;
+    return;
+  }
+
   let b=new THREE.Mesh(
     new THREE.SphereGeometry(0.1),
     new THREE.MeshBasicMaterial({color:0xff0000})
@@ -155,7 +170,6 @@ function init(){
   ground.rotation.x=-Math.PI/2;
   scene.add(ground);
 
-  // trees
   for(let i=0;i<30;i++){
     let t=new THREE.Group();
 
@@ -184,7 +198,6 @@ function init(){
   scene.add(player);
   scene.add(enemy);
 
-  // sword
   let blade=new THREE.Mesh(
     new THREE.BoxGeometry(0.2,2,0.2),
     new THREE.MeshStandardMaterial({color:0xffff00, emissive:0xffff00})
@@ -196,7 +209,6 @@ function init(){
   sword.position.set(0.8,1.5,0);
   player.add(sword);
 
-  // shield
   shieldMesh=new THREE.Mesh(
     new THREE.SphereGeometry(1.2,16,16),
     new THREE.MeshBasicMaterial({color:0x00ffff, wireframe:true})
@@ -220,6 +232,13 @@ function init(){
       shoot(); stamina-=0.2;
     }
 
+    if(e.key==="q" && stamina>=2 && dodgeCD<=0){
+      dodge=true;
+      dodgeT=0;
+      stamina-=2;
+      dodgeCD=60;
+    }
+
     if(e.key==="r" && dead) location.reload();
   });
 
@@ -237,8 +256,8 @@ function animate(){
   if(dead) return;
 
   if(parryWindow>0) parryWindow--;
+  if(gunTimer>0) gunTimer--;
 
-  // movement
   let move=new THREE.Vector3();
   if(keys["w"]) move.z-=1;
   if(keys["s"]) move.z+=1;
@@ -250,19 +269,29 @@ function animate(){
     player.position.add(move.multiplyScalar(0.1));
   }
 
+  dodgeCD--;
+  if(dodge){
+    dodgeT++;
+    if(move.length()>0){
+      player.position.add(move.clone().normalize().multiplyScalar(0.35));
+    }
+    if(dodgeT>15) dodge=false;
+  }
+
   player.position.x=Math.max(-29,Math.min(29,player.position.x));
   player.position.z=Math.max(-29,Math.min(29,player.position.z));
 
-  // shield
   shieldMesh.visible=shielding && stamina>0;
   if(shielding) stamina-=0.03;
 
-  // boss movement (faster phase 2)
   let dir=new THREE.Vector3().subVectors(enemy.position,player.position).normalize();
-  let speed = bossPhase===2 ? 0.08 : 0.05;
+  let dist = player.position.distanceTo(enemy.position);
+
+  let speed = bossPhase===2 ? 0.065 : 0.05;
+  if(dist < 3) speed *= 0.75;
+
   enemy.position.add(dir.multiplyScalar(-speed));
 
-  // DASH attack (phase 2 only)
   if(bossPhase===2){
     dashCooldown--;
     if(!dashActive && dashCooldown<=0){
@@ -274,17 +303,14 @@ function animate(){
   }
 
   if(dashActive){
-    enemy.position.add(dashDir.clone().multiplyScalar(0.3));
+    enemy.position.add(dashDir.clone().multiplyScalar(0.25));
     dashTime--;
-
     if(enemy.position.distanceTo(player.position)<2){
       if(!shielding) hp-=2;
     }
-
     if(dashTime<=0) dashActive=false;
   }
 
-  // cubes
   shootTimer--;
   if(shootTimer<=0){
     shootCube();
@@ -334,7 +360,6 @@ function animate(){
     }
   }
 
-  // bullets
   for(let i=bullets.length-1;i>=0;i--){
     let b=bullets[i];
     b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
@@ -346,7 +371,6 @@ function animate(){
     }
   }
 
-  // sword
   if(attacking){
     attackT++;
     sword.rotation.z=-Math.PI/2+(attackT/20)*Math.PI;
@@ -362,19 +386,16 @@ function animate(){
     }
   }
 
-  if(!shielding && !attacking){
+  if(!shielding && !attacking && !dodge){
     stamina=Math.min(maxStamina, stamina+0.02);
   }
 
-  // phase trigger
   if(bossHP<=5 && bossPhase===1){
     upgradeBoss();
   }
 
-  // rotate arms
   bossArms.forEach((a,i)=> a.rotation.y += 0.05 + i*0.01);
 
-  // camera
   let mid=new THREE.Vector3().addVectors(player.position,enemy.position).multiplyScalar(0.5);
   camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+12),0.1);
   camera.lookAt(mid);
