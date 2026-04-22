@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Ultimate Boss Fight</title>
+  <title>Super boss fight</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
     #ui { position:absolute; top:10px; left:10px; color:white; font-family:Arial; z-index:10; }
@@ -28,12 +28,10 @@
 let scene, camera, renderer;
 let player, enemy, sword, shieldMesh;
 
-let bullets = [];
-let enemyProjectiles = [];
+let bullets=[], enemyProjectiles=[];
+let keys={};
 
-let keys = {};
-let shielding = false;
-let parryWindow = 0;
+let shielding=false, parryWindow=0;
 
 let stamina=5, maxStamina=5;
 let hp=5, bossHP=10;
@@ -43,8 +41,9 @@ let attacking=false, attackT=0, hitDone=false;
 let bossPhase=1, bossArms=[];
 let shootTimer=0;
 
+let dashCooldown=0, dashActive=false, dashDir=new THREE.Vector3(), dashTime=0;
+
 let dead=false;
-let shake=0;
 
 // ===== effects =====
 function spark(pos){
@@ -84,6 +83,24 @@ function makeHuman(color){
   return g;
 }
 
+// ===== boss phase 2 =====
+function upgradeBoss(){
+  bossPhase=2;
+
+  for(let i=0;i<4;i++){
+    let arm=new THREE.Mesh(
+      new THREE.BoxGeometry(0.25,1.2,0.25),
+      new THREE.MeshStandardMaterial({color:0xaa0000})
+    );
+
+    let a=(i/4)*Math.PI*2;
+    arm.position.set(Math.cos(a)*1.2,1.5,Math.sin(a)*1.2);
+
+    enemy.add(arm);
+    bossArms.push(arm);
+  }
+}
+
 // ===== shoot =====
 function shoot(){
   let b=new THREE.Mesh(
@@ -121,7 +138,6 @@ function shootCube(){
 // ===== init =====
 function init(){
   scene=new THREE.Scene();
-
   camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,0.1,1000);
 
   renderer=new THREE.WebGLRenderer();
@@ -215,24 +231,9 @@ function init(){
   animate();
 }
 
-// ===== UI =====
-function ui(){
-  document.getElementById("hp").style.width=(hp/5*100)+"%";
-  document.getElementById("boss").style.width=(bossHP/10*100)+"%";
-  document.getElementById("stam").style.width=(stamina/maxStamina*100)+"%";
-}
-
-function show(t){
-  let m=document.getElementById("msg");
-  m.innerText=t+" (R)";
-  m.style.display="block";
-  dead=true;
-}
-
 // ===== main loop =====
 function animate(){
   requestAnimationFrame(animate);
-
   if(dead) return;
 
   if(parryWindow>0) parryWindow--;
@@ -256,18 +257,40 @@ function animate(){
   shieldMesh.visible=shielding && stamina>0;
   if(shielding) stamina-=0.03;
 
-  // boss basic move
+  // boss movement (faster phase 2)
   let dir=new THREE.Vector3().subVectors(enemy.position,player.position).normalize();
-  enemy.position.add(dir.multiplyScalar(-0.05));
+  let speed = bossPhase===2 ? 0.08 : 0.05;
+  enemy.position.add(dir.multiplyScalar(-speed));
 
-  // shoot cubes
+  // DASH attack (phase 2 only)
+  if(bossPhase===2){
+    dashCooldown--;
+    if(!dashActive && dashCooldown<=0){
+      dashActive=true;
+      dashTime=20;
+      dashDir = new THREE.Vector3().subVectors(player.position,enemy.position).normalize();
+      dashCooldown=120;
+    }
+  }
+
+  if(dashActive){
+    enemy.position.add(dashDir.clone().multiplyScalar(0.3));
+    dashTime--;
+
+    if(enemy.position.distanceTo(player.position)<2){
+      if(!shielding) hp-=2;
+    }
+
+    if(dashTime<=0) dashActive=false;
+  }
+
+  // cubes
   shootTimer--;
   if(shootTimer<=0){
     shootCube();
     shootTimer = bossPhase===2 ? 40 : 70;
   }
 
-  // cubes
   for(let i=enemyProjectiles.length-1;i>=0;i--){
     let p=enemyProjectiles[i];
 
@@ -279,7 +302,6 @@ function animate(){
     p.userData.life--;
     p.position.add(p.userData.dir.clone().multiplyScalar(0.15));
 
-    // reflect hit boss
     if(p.userData.reflected && p.position.distanceTo(enemy.position)<1.6){
       bossHP-=2;
       spark(enemy.position);
@@ -288,7 +310,6 @@ function animate(){
       continue;
     }
 
-    // hit player
     if(p.position.distanceTo(player.position)<1.6){
 
       if(parryWindow>0){
@@ -345,16 +366,25 @@ function animate(){
     stamina=Math.min(maxStamina, stamina+0.02);
   }
 
+  // phase trigger
+  if(bossHP<=5 && bossPhase===1){
+    upgradeBoss();
+  }
+
+  // rotate arms
+  bossArms.forEach((a,i)=> a.rotation.y += 0.05 + i*0.01);
+
   // camera
   let mid=new THREE.Vector3().addVectors(player.position,enemy.position).multiplyScalar(0.5);
   camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+12),0.1);
   camera.lookAt(mid);
 
-  ui();
+  document.getElementById("hp").style.width=(hp/5*100)+"%";
+  document.getElementById("boss").style.width=(bossHP/10*100)+"%";
+  document.getElementById("stam").style.width=(stamina/maxStamina*100)+"%";
 
-  if(hp<=0) show("GAME OVER");
-  if(bossHP<=5 && bossPhase===1) bossPhase=2;
-  if(bossHP<=0) show("YOU WIN");
+  if(hp<=0){ document.getElementById("msg").innerText="GAME OVER (R)"; document.getElementById("msg").style.display="block"; dead=true; }
+  if(bossHP<=0){ document.getElementById("msg").innerText="YOU WIN (R)"; document.getElementById("msg").style.display="block"; dead=true; }
 
   renderer.render(scene,camera);
 }
