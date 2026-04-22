@@ -30,37 +30,23 @@ let player, enemy, sword, shieldMesh;
 
 let bullets = [];
 let enemyProjectiles = [];
-let shootTimer = 0;
 
 let keys = {};
 let shielding = false;
-
-let attacking=false, attackT=0, hitDone=false;
+let parryWindow = 0;
 
 let stamina=5, maxStamina=5;
 let hp=5, bossHP=10;
 
-let dodge=false, dodgeT=0, dodgeCD=0;
-
-let gunCooldown=0, gunHeat=0, gunTimer=0;
+let attacking=false, attackT=0, hitDone=false;
 
 let bossPhase=1, bossArms=[];
-let bossTimer=0;
+let shootTimer=0;
 
-let dashState=0, dashTimer=0, dashDir=new THREE.Vector3(), dashCooldown=0;
-
-let shake=0, dead=false;
-let bossMaterial;
+let dead=false;
+let shake=0;
 
 // ===== effects =====
-function applyShake(){
-  if(shake>0){
-    camera.position.x+=(Math.random()-0.5)*shake;
-    camera.position.y+=(Math.random()-0.5)*shake;
-    shake*=0.9;
-  }
-}
-
 function spark(pos){
   let s=new THREE.Mesh(
     new THREE.SphereGeometry(0.1),
@@ -72,54 +58,30 @@ function spark(pos){
 }
 
 // ===== character =====
-function human(color){
+function makeHuman(color){
   let g=new THREE.Group();
+  let mat=new THREE.MeshStandardMaterial({color});
+  let limb=new THREE.MeshStandardMaterial({color:0x222222});
 
-  let bodyMat=new THREE.MeshStandardMaterial({color});
-  let limbMat=new THREE.MeshStandardMaterial({color:0x222222});
-
-  let body=new THREE.Mesh(new THREE.BoxGeometry(0.8,1.5,0.4),bodyMat);
+  let body=new THREE.Mesh(new THREE.BoxGeometry(0.8,1.5,0.4),mat);
   body.position.y=1.2; g.add(body);
 
-  let head=new THREE.Mesh(new THREE.BoxGeometry(0.6,0.6,0.6),bodyMat);
+  let head=new THREE.Mesh(new THREE.BoxGeometry(0.6,0.6,0.6),mat);
   head.position.y=2.2; g.add(head);
 
-  let leg1=new THREE.Mesh(new THREE.BoxGeometry(0.3,1,0.3),limbMat);
+  let leg1=new THREE.Mesh(new THREE.BoxGeometry(0.3,1,0.3),limb);
   leg1.position.set(-0.2,0.5,0); g.add(leg1);
 
-  let leg2=new THREE.Mesh(new THREE.BoxGeometry(0.3,1,0.3),limbMat);
+  let leg2=new THREE.Mesh(new THREE.BoxGeometry(0.3,1,0.3),limb);
   leg2.position.set(0.2,0.5,0); g.add(leg2);
 
-  let armL=new THREE.Mesh(new THREE.BoxGeometry(0.25,1,0.25),limbMat);
-  armL.position.set(-0.6,1.6,0); g.add(armL);
+  let arm1=new THREE.Mesh(new THREE.BoxGeometry(0.25,1,0.25),limb);
+  arm1.position.set(-0.6,1.6,0); g.add(arm1);
 
-  let armR=new THREE.Mesh(new THREE.BoxGeometry(0.25,1,0.25),limbMat);
-  armR.position.set(0.6,1.6,0); g.add(armR);
+  let arm2=new THREE.Mesh(new THREE.BoxGeometry(0.25,1,0.25),limb);
+  arm2.position.set(0.6,1.6,0); g.add(arm2);
 
-  g.userData.material = bodyMat;
   return g;
-}
-
-// ===== tree =====
-function tree(x,z){
-  let t=new THREE.Group();
-
-  let trunk=new THREE.Mesh(
-    new THREE.CylinderGeometry(0.3,0.3,2),
-    new THREE.MeshStandardMaterial({color:0x8B4513})
-  );
-  trunk.position.y=1;
-  t.add(trunk);
-
-  let leaves=new THREE.Mesh(
-    new THREE.SphereGeometry(1.3),
-    new THREE.MeshStandardMaterial({color:0x2ecc71})
-  );
-  leaves.position.y=2.5;
-  t.add(leaves);
-
-  t.position.set(x,0,z);
-  scene.add(t);
 }
 
 // ===== shoot =====
@@ -139,40 +101,21 @@ function shoot(){
   scene.add(b);
 }
 
-// ===== boss cube =====
+// ===== cube =====
 function shootCube(){
-  let cube=new THREE.Mesh(
+  let c=new THREE.Mesh(
     new THREE.BoxGeometry(0.4,0.4,0.4),
     new THREE.MeshBasicMaterial({color:0xff2222})
   );
 
-  cube.position.copy(enemy.position);
-  cube.position.y+=1.2;
+  c.position.copy(enemy.position);
+  c.position.y+=1.2;
 
   let dir=new THREE.Vector3().subVectors(player.position,enemy.position).normalize();
+  c.userData={dir, life:120, reflected:false};
 
-  cube.userData={dir, life:120};
-
-  enemyProjectiles.push(cube);
-  scene.add(cube);
-}
-
-// ===== phase 2 =====
-function upgradeBoss(){
-  bossPhase=2;
-
-  for(let i=0;i<4;i++){
-    let arm=new THREE.Mesh(
-      new THREE.BoxGeometry(0.25,1.2,0.25),
-      new THREE.MeshStandardMaterial({color:0xaa0000})
-    );
-
-    let a=(i/4)*Math.PI*2;
-    arm.position.set(Math.cos(a)*1.2,1.5,Math.sin(a)*1.2);
-
-    enemy.add(arm);
-    bossArms.push(arm);
-  }
+  enemyProjectiles.push(c);
+  scene.add(c);
 }
 
 // ===== init =====
@@ -196,18 +139,31 @@ function init(){
   ground.rotation.x=-Math.PI/2;
   scene.add(ground);
 
+  // trees
   for(let i=0;i<30;i++){
-    let x=(Math.random()-0.5)*50;
-    let z=(Math.random()-0.5)*50;
-    if(Math.abs(x)<6 && Math.abs(z)<6) continue;
-    tree(x,z);
+    let t=new THREE.Group();
+
+    let trunk=new THREE.Mesh(
+      new THREE.CylinderGeometry(0.3,0.3,2),
+      new THREE.MeshStandardMaterial({color:0x8B4513})
+    );
+    trunk.position.y=1;
+    t.add(trunk);
+
+    let leaves=new THREE.Mesh(
+      new THREE.SphereGeometry(1.3),
+      new THREE.MeshStandardMaterial({color:0x2ecc71})
+    );
+    leaves.position.y=2.5;
+    t.add(leaves);
+
+    t.position.set((Math.random()-0.5)*50,0,(Math.random()-0.5)*50);
+    scene.add(t);
   }
 
-  player=human(0x00ff00);
-  enemy=human(0xff0000);
+  player=makeHuman(0x00ff00);
+  enemy=makeHuman(0xff0000);
   enemy.position.set(5,0,0);
-
-  bossMaterial = enemy.userData.material;
 
   scene.add(player);
   scene.add(enemy);
@@ -218,43 +174,34 @@ function init(){
     new THREE.MeshStandardMaterial({color:0xffff00, emissive:0xffff00})
   );
   blade.position.y=1;
+
   sword=new THREE.Group();
   sword.add(blade);
   sword.position.set(0.8,1.5,0);
   player.add(sword);
 
-  // shield visual
-  shieldMesh = new THREE.Mesh(
+  // shield
+  shieldMesh=new THREE.Mesh(
     new THREE.SphereGeometry(1.2,16,16),
     new THREE.MeshBasicMaterial({color:0x00ffff, wireframe:true})
   );
-  shieldMesh.visible = false;
+  shieldMesh.visible=false;
   player.add(shieldMesh);
 
   document.addEventListener("keydown",e=>{
     keys[e.key.toLowerCase()]=true;
 
-    if(e.code==="ShiftLeft") shielding=true;
+    if(e.code==="ShiftLeft"){
+      shielding=true;
+      parryWindow=10;
+    }
 
-    if(e.code==="Space" && !attacking && stamina>=1){
+    if(e.code==="Space" && stamina>=1){
       attacking=true; attackT=0; hitDone=false; stamina-=1;
     }
 
-    if(e.key==="m" && stamina>0.2 && gunCooldown<=0){
-      if(gunTimer<=0){ gunTimer=120; gunHeat=0; }
-      gunHeat++;
-
-      if(gunHeat>6){
-        hp-=2; shake=0.8; spark(player.position);
-        gunHeat=0; gunTimer=0; gunCooldown=50;
-        return;
-      }
-
-      shoot(); stamina-=0.2; gunCooldown=10;
-    }
-
-    if(e.key==="q" && stamina>=2 && dodgeCD===0){
-      dodge=true; dodgeT=0; stamina-=2; dodgeCD=60;
+    if(e.key==="m" && stamina>0.2){
+      shoot(); stamina-=0.2;
     }
 
     if(e.key==="r" && dead) location.reload();
@@ -270,7 +217,6 @@ function init(){
 
 // ===== UI =====
 function ui(){
-  hp=Math.max(0,hp);
   document.getElementById("hp").style.width=(hp/5*100)+"%";
   document.getElementById("boss").style.width=(bossHP/10*100)+"%";
   document.getElementById("stam").style.width=(stamina/maxStamina*100)+"%";
@@ -287,20 +233,11 @@ function show(t){
 function animate(){
   requestAnimationFrame(animate);
 
-  shieldMesh.visible = shielding && stamina>0;
+  if(dead) return;
 
-  if(shielding && stamina>0){
-    stamina -= 0.03;
-  } else {
-    shielding = false;
-  }
+  if(parryWindow>0) parryWindow--;
 
-  shootTimer--;
-  if(shootTimer<=0){
-    shootCube();
-    shootTimer = bossPhase===2 ? 40 : 70;
-  }
-
+  // movement
   let move=new THREE.Vector3();
   if(keys["w"]) move.z-=1;
   if(keys["s"]) move.z+=1;
@@ -312,8 +249,23 @@ function animate(){
     player.position.add(move.multiplyScalar(0.1));
   }
 
-  let dist=player.position.distanceTo(enemy.position);
+  player.position.x=Math.max(-29,Math.min(29,player.position.x));
+  player.position.z=Math.max(-29,Math.min(29,player.position.z));
+
+  // shield
+  shieldMesh.visible=shielding && stamina>0;
+  if(shielding) stamina-=0.03;
+
+  // boss basic move
   let dir=new THREE.Vector3().subVectors(enemy.position,player.position).normalize();
+  enemy.position.add(dir.multiplyScalar(-0.05));
+
+  // shoot cubes
+  shootTimer--;
+  if(shootTimer<=0){
+    shootCube();
+    shootTimer = bossPhase===2 ? 40 : 70;
+  }
 
   // cubes
   for(let i=enemyProjectiles.length-1;i>=0;i--){
@@ -325,30 +277,89 @@ function animate(){
     }
 
     p.userData.life--;
-
     p.position.add(p.userData.dir.clone().multiplyScalar(0.15));
 
-    if(p.position.distanceTo(player.position)<1.6){
-      if(!shielding){
-        hp-=1.5;
-        shake=0.7;
-        spark(player.position);
-      }
+    // reflect hit boss
+    if(p.userData.reflected && p.position.distanceTo(enemy.position)<1.6){
+      bossHP-=2;
+      spark(enemy.position);
       scene.remove(p);
       enemyProjectiles.splice(i,1);
       continue;
     }
+
+    // hit player
+    if(p.position.distanceTo(player.position)<1.6){
+
+      if(parryWindow>0){
+        let reflect=new THREE.Vector3().subVectors(enemy.position,p.position).normalize();
+        p.userData.dir.copy(reflect);
+        p.userData.reflected=true;
+        p.material.color.set(0x00ffff);
+        spark(player.position);
+        continue;
+      }
+
+      if(shielding){
+        scene.remove(p);
+        enemyProjectiles.splice(i,1);
+        continue;
+      }
+
+      hp-=1.5;
+      spark(player.position);
+      scene.remove(p);
+      enemyProjectiles.splice(i,1);
+    }
   }
+
+  // bullets
+  for(let i=bullets.length-1;i>=0;i--){
+    let b=bullets[i];
+    b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
+
+    if(b.position.distanceTo(enemy.position)<1.6){
+      bossHP-=0.5;
+      scene.remove(b);
+      bullets.splice(i,1);
+    }
+  }
+
+  // sword
+  if(attacking){
+    attackT++;
+    sword.rotation.z=-Math.PI/2+(attackT/20)*Math.PI;
+
+    if(!hitDone && attackT>5 && attackT<15 && player.position.distanceTo(enemy.position)<3){
+      bossHP-=1.5;
+      hitDone=true;
+    }
+
+    if(attackT>20){
+      attacking=false;
+      sword.rotation.z=0;
+    }
+  }
+
+  if(!shielding && !attacking){
+    stamina=Math.min(maxStamina, stamina+0.02);
+  }
+
+  // camera
+  let mid=new THREE.Vector3().addVectors(player.position,enemy.position).multiplyScalar(0.5);
+  camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+12),0.1);
+  camera.lookAt(mid);
 
   ui();
 
-  if(hp<=0 && !dead) show("GAME OVER");
+  if(hp<=0) show("GAME OVER");
+  if(bossHP<=5 && bossPhase===1) bossPhase=2;
+  if(bossHP<=0) show("YOU WIN");
 
   renderer.render(scene,camera);
 }
 
 init();
 </script>
-
 </body>
 </html>
