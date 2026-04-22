@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Super Boss Fight</title>
+  <title>Ultimate Boss Fight</title>
   <style>
     body { margin:0; overflow:hidden; background:black; }
     #ui { position:absolute; top:10px; left:10px; color:white; font-family:Arial; z-index:10; }
@@ -62,7 +62,7 @@ function spark(pos){
   setTimeout(()=>scene.remove(s),100);
 }
 
-// ⚠️ warning ring BEFORE slam
+// ⚠️ warning ring
 function warningRingEffect(){
   let geo=new THREE.RingGeometry(2.8,3.0,40);
   let mat=new THREE.MeshBasicMaterial({
@@ -98,7 +98,7 @@ function warningRingEffect(){
   animate();
 }
 
-// 🌊 shockwave AFTER slam
+// 🌊 shockwave
 function shockwaveEffect(pos){
   let geo=new THREE.RingGeometry(0.1,0.2,32);
   let mat=new THREE.MeshBasicMaterial({
@@ -239,6 +239,32 @@ function init(){
   ground.rotation.x=-Math.PI/2;
   scene.add(ground);
 
+  // 🌳 TREES
+  for(let i=0;i<30;i++){
+    let x=(Math.random()-0.5)*50;
+    let z=(Math.random()-0.5)*50;
+    if(Math.abs(x)<6 && Math.abs(z)<6) continue;
+
+    let t=new THREE.Group();
+
+    let trunk=new THREE.Mesh(
+      new THREE.CylinderGeometry(0.3,0.3,2),
+      new THREE.MeshStandardMaterial({color:0x8B4513})
+    );
+    trunk.position.y=1;
+    t.add(trunk);
+
+    let leaves=new THREE.Mesh(
+      new THREE.SphereGeometry(1.3),
+      new THREE.MeshStandardMaterial({color:0x2ecc71})
+    );
+    leaves.position.y=2.5;
+    t.add(leaves);
+
+    t.position.set(x,0,z);
+    scene.add(t);
+  }
+
   player=makeHuman(0x00ff00);
   enemy=makeHuman(0xff0000);
   enemy.position.set(5,0,0);
@@ -334,15 +360,16 @@ function animate(){
 
   enemy.position.add(dir.multiplyScalar(-speed));
 
-  // ===== SLAM =====
+  // ===== SLAM (FIXED) =====
   slamCooldown--;
-  if(!dashActive && slamCooldown<=0 && dist<3){
 
+  if(slamCharge===0 && !dashActive && slamCooldown<=0 && dist<3){
+    slamCharge=1;
+    warningRingEffect();
+  }
+
+  if(slamCharge>0){
     slamCharge++;
-
-    if(slamCharge===1){
-      warningRingEffect();
-    }
 
     enemy.children.forEach(p=>{
       if(p.material && p.material.emissive){
@@ -351,12 +378,13 @@ function animate(){
     });
 
     if(slamCharge>40){
-
       shockwaveEffect(enemy.position);
 
-      if(dist<3 && !shielding && !dodge){
-        hp-=2;
-        spark(player.position);
+      if(player.position.distanceTo(enemy.position)<3){
+        if(!shielding && !dodge){
+          hp-=2;
+          spark(player.position);
+        }
       }
 
       enemy.children.forEach(p=>{
@@ -368,135 +396,6 @@ function animate(){
       slamCharge=0;
       slamCooldown=120;
     }
-
-  } else {
-    slamCharge=0;
-  }
-
-  // ===== DASH =====
-  if(bossPhase===2){
-    dashCooldown--;
-    if(!dashActive && dashCooldown<=0){
-      dashActive=true;
-      dashTime=20;
-      dashDir=new THREE.Vector3().subVectors(player.position,enemy.position).normalize();
-      dashCooldown=120;
-    }
-  }
-
-  if(dashActive){
-    enemy.position.add(dashDir.clone().multiplyScalar(0.25));
-    dashTime--;
-    if(dist<2 && !shielding) hp-=2;
-    if(dashTime<=0) dashActive=false;
-  }
-
-  // ===== cubes =====
-  shootTimer--;
-  if(shootTimer<=0){
-    let chance=bossPhase===2 ? 0.6 : 0.35;
-    if(Math.random()<chance) shootCube();
-    shootTimer=bossPhase===2 ? 30+Math.random()*40 : 60+Math.random()*60;
-  }
-
-  for(let i=enemyProjectiles.length-1;i>=0;i--){
-    let p=enemyProjectiles[i];
-
-    if(bossPhase===2 && p.userData.life>60){
-      let home=new THREE.Vector3().subVectors(player.position,p.position).normalize();
-      p.userData.dir.lerp(home,0.05);
-    }
-
-    p.userData.life--;
-    p.position.add(p.userData.dir.clone().multiplyScalar(0.15));
-
-    if(p.userData.reflected && p.position.distanceTo(enemy.position)<1.6){
-      bossHP-=2;
-      spark(enemy.position);
-      scene.remove(p);
-      enemyProjectiles.splice(i,1);
-      continue;
-    }
-
-    if(p.position.distanceTo(player.position)<1.6){
-      if(parryWindow>0){
-        let reflect=new THREE.Vector3().subVectors(enemy.position,p.position).normalize();
-        p.userData.dir.copy(reflect);
-        p.userData.reflected=true;
-        p.material.color.set(0x00ffff);
-        spark(player.position);
-        continue;
-      }
-
-      if(shielding){
-        scene.remove(p);
-        enemyProjectiles.splice(i,1);
-        continue;
-      }
-
-      hp-=1;
-      spark(player.position);
-      scene.remove(p);
-      enemyProjectiles.splice(i,1);
-    }
-  }
-
-  // ===== bullets =====
-  for(let i=bullets.length-1;i>=0;i--){
-    let b=bullets[i];
-    b.position.add(b.userData.dir.clone().multiplyScalar(0.6));
-
-    if(b.position.distanceTo(enemy.position)<1.6){
-      bossHP-=0.5;
-      scene.remove(b);
-      bullets.splice(i,1);
-    }
-  }
-
-  // ===== sword =====
-  if(attacking){
-    attackT++;
-    sword.rotation.z=-Math.PI/2+(attackT/20)*Math.PI;
-
-    if(!hitDone && attackT>5 && attackT<15 && dist<3){
-      bossHP-=1.5;
-      hitDone=true;
-    }
-
-    if(attackT>20){
-      attacking=false;
-      sword.rotation.z=0;
-    }
-  }
-
-  if(!shielding && !attacking && !dodge){
-    stamina=Math.min(maxStamina, stamina+0.02);
-  }
-
-  if(bossHP<=5 && bossPhase===1){
-    upgradeBoss();
-  }
-
-  bossArms.forEach((a,i)=> a.rotation.y += 0.05 + i*0.01);
-
-  let mid=new THREE.Vector3().addVectors(player.position,enemy.position).multiplyScalar(0.5);
-  camera.position.lerp(new THREE.Vector3(mid.x,5,mid.z+12),0.1);
-  camera.lookAt(mid);
-
-  document.getElementById("hp").style.width=(hp/5*100)+"%";
-  document.getElementById("boss").style.width=(bossHP/10*100)+"%";
-  document.getElementById("stam").style.width=(stamina/maxStamina*100)+"%";
-
-  if(hp<=0){
-    document.getElementById("msg").innerText="GAME OVER (R)";
-    document.getElementById("msg").style.display="block";
-    dead=true;
-  }
-
-  if(bossHP<=0){
-    document.getElementById("msg").innerText="YOU WIN (R)";
-    document.getElementById("msg").style.display="block";
-    dead=true;
   }
 
   renderer.render(scene,camera);
